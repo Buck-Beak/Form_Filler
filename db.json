@@ -1,0 +1,67 @@
+{
+  "_id": "user_001",
+  "name": "Nanda Krishna",
+  "email": "nanda@example.com",
+  "phone": "+919876543210",
+  "date_of_birth": "2003-05-12",
+  "gender": "Male",
+  "nationality": "Indian",
+  "marital_status": "Single",
+  "aadhaar_number": "1234-5678-9012",
+  "pan_number": "ABCDE1234F",
+  "address": {
+    "line1": "123 MG Road",
+    "line2": "Near City Mall",
+    "city": "Kochi",
+    "district": "Ernakulam",
+    "state": "Kerala",
+    "zip": "682001",
+    "country": "India"
+  },
+
+  "education": {
+    "degree": "B.Tech",
+    "branch": "Computer Science",
+    "college": "MACE",
+    "university": "KTU",
+    "year_of_passing": "2025",
+    "percentage": "85%"
+  },
+
+  "family_details": {
+    "father_name": "Krishna Kumar",
+    "father_occupation": "Government Employee",
+    "father_contact": "+919876543211",
+
+    "mother_name": "Lakshmi Devi",
+    "mother_occupation": "Teacher",
+    "mother_contact": "+919876543212",
+
+    "guardian_name": "Krishna Kumar",
+    "guardian_relation": "Father",
+    "guardian_contact": "+919876543211",
+
+    "siblings": [
+      {
+        "name": "Anand Krishna",
+        "relation": "Brother",
+        "age": 18,
+        "occupation": "Student",
+        "education": "Class 12"
+      }
+    ]
+  },
+
+  "work_experience": [
+    {
+      "company": "ABC Technologies",
+      "role": "Frontend Intern",
+      "start_date": "2024-06-01",
+      "end_date": "2024-08-31",
+      "description": "Worked on React.js frontend development."
+    }
+  ],
+
+  "skills": ["React", "Node.js", "C", "Python", "MongoDB"],
+  "saved_forms": ["form_001", "form_002"]
+}
