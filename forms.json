@@ -1,44 +1,26 @@
 {
   "pta_login": {
-    "url": "https://practicetestautomation.com/practice-test-login/",
-    "required_fields": ["name", "password"]
+    "url": "https://practicetestautomation.com/practice-test-login/"
   },
   "w3_form": {
-    "url": "https://www.w3schools.com/html/html_forms.asp",
-    "required_fields": ["name", "email"]
+    "url": "https://www.w3schools.com/html/html_forms.asp"
   },
   "demoqa_form": {
-    "url": "https://demoqa.com/automation-practice-form",
-    "required_fields": [
-      "name",
-      "email",
-      "phone",
-      "address",
-      "date_of_birth",
-      "gender"
-    ]
+    "url": "https://demoqa.com/automation-practice-form"
   },
   "jotform_student": {
-    "url": "https://form.jotform.com/212223051303031",
-    "required_fields": [
-      "name",
-      "email",
-      "phone",
-      "father_name",
-      "mother_name",
-      "address",
-      "date_of_birth"
-    ]
+    "url": "https://form.jotform.com/212223051303031"
   },
   "google_form_sample": {
-    "url": "https://forms.gle/pGLRyRAzYd5E9t1cA",
-    "required_fields": [
-      "name",
-      "email"
-    ]
+    "url": "https://forms.gle/pGLRyRAzYd5E9t1cA"
   },
   "practice":{
-    "url":"https://practicetestautomation.com/practice-test-login/",
-    "required_fields":["name","password"]
+    "url":"https://practicetestautomation.com/practice-test-login/"
+  },
+  "epaytax":{
+    "url":"https://eportal.incometax.gov.in/iec/foservices/#/e-pay-tax-prelogin/user-details"
+  },
+  "everify":{
+    "url":"https://eportal.incometax.gov.in/iec/foservices/#/pre-login/eVerifyReturn-bl"
   }
 }

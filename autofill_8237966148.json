@@ -1,0 +1,16 @@
+[
+  {
+    "title": "Autofill Profile for https://practicetestautomation.com/practice-test-login/",
+    "url": "https://practicetestautomation.com/practice-test-login/*",
+    "fields": [
+      {
+        "selector": "input[name='username']",
+        "value": "Alice Johnson"
+      },
+      {
+        "selector": "input[name='password']",
+        "value": "password123"
+      }
+    ]
+  }
+]
