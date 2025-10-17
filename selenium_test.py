@@ -2,6 +2,8 @@ import os
 import json
 import re
 import time
+import io
+import tempfile
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, ContextTypes, filters
@@ -9,6 +11,9 @@ import google.generativeai as genai
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+import PyPDF2
+from PIL import Image
+import base64
 
 # ── Load environment variables
 load_dotenv()
@@ -90,6 +95,147 @@ def extract_form_fields(driver):
             "label": label_text
         })
     return fields
+
+# ── Extract text from different document types
+def extract_text_from_document(file_content, file_name, file_extension):
+    """Extract text from various document types"""
+    try:
+        if file_extension.lower() == '.pdf':
+            # Handle PDF files
+            pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
+            text = ""
+            for page in pdf_reader.pages:
+                text += page.extract_text() + "\n"
+            return text
+        
+        elif file_extension.lower() in ['.jpg', '.jpeg', '.png', '.gif', '.bmp']:
+            # Handle image files - return raw bytes for Gemini vision
+            return file_content
+        
+        elif file_extension.lower() in ['.txt', '.doc', '.docx']:
+            # Handle text files
+            try:
+                return file_content.decode('utf-8')
+            except:
+                return str(file_content)
+        
+        else:
+            # Default: try to decode as text
+            try:
+                return file_content.decode('utf-8')
+            except:
+                return str(file_content)
+                
+    except Exception as e:
+        print(f"Error extracting text from {file_name}: {e}")
+        return str(file_content)
+
+# ── Parse document with Gemini
+def parse_document_with_gemini(document_content, file_name, is_image=False):
+    """Parse uploaded document and extract user information"""
+    prompt = f"""
+    You are given a document: "{file_name}". Please extract personal information from this document.
+    
+    Extract the following information if available:
+    - name (full name)
+    - email
+    - phone/mobile number
+    - date_of_birth (dob)
+    - address
+    - father_name
+    - mother_name
+    - aadhaar_number
+    - pan_number (pan)
+    - assessment_year
+    - gender
+    - nationality
+    - marital_status
+    
+    Return ONLY a JSON object with the extracted information. If a field is not found, don't include it in the JSON.
+    Format:
+    {{
+        "name": "...",
+        "email": "...",
+        "mobile": "...",
+        "dob": "...",
+        "address": "...",
+        "father_name": "...",
+        "mother_name": "...",
+        "aadhaar_number": "...",
+        "pan": "...",
+        "assessment_year": "...",
+        "gender": "...",
+        "nationality": "...",
+        "marital_status": "..."
+    }}
+    
+    Document content:
+    {document_content}
+    """
+    
+    try:
+        if is_image:
+            # Use Gemini's vision capabilities for images
+            import google.generativeai as genai
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            
+            # Create image part for Gemini
+            image_part = {
+                "mime_type": "image/jpeg",
+                "data": document_content
+            }
+            
+            response = model.generate_content([image_part, prompt])
+        else:
+            # Regular text processing
+            response = gemini_model.generate_content(prompt)
+        
+        raw_text = response.text.strip()
+        # Clean up any markdown formatting
+        raw_text = re.sub(r"^```[a-zA-Z]*\n?", "", raw_text)
+        raw_text = re.sub(r"```$", "", raw_text)
+        
+        # Parse JSON
+        parsed_data = json.loads(raw_text)
+        return parsed_data, None
+    except Exception as e:
+        return None, f"Error parsing document: {str(e)}"
+
+# ── Save user data to users.json
+def save_user_data(telegram_id, parsed_data):
+    """Save parsed user data to users.json"""
+    try:
+        # Load existing users
+        if os.path.exists("users.json"):
+            with open("users.json", "r") as f:
+                users = json.load(f)
+        else:
+            users = []
+        
+        # Add telegram_id to parsed data
+        parsed_data["telegram_id"] = telegram_id
+        
+        # Check if user already exists
+        user_index = None
+        for i, user in enumerate(users):
+            if user.get("telegram_id") == telegram_id:
+                user_index = i
+                break
+        
+        if user_index is not None:
+            # Update existing user
+            users[user_index].update(parsed_data)
+        else:
+            # Add new user
+            users.append(parsed_data)
+        
+        # Save back to file
+        with open("users.json", "w") as f:
+            json.dump(users, f, indent=4)
+        
+        return True, "User data saved successfully"
+    except Exception as e:
+        return False, f"Error saving user data: {str(e)}"
 
 # ── Classify fields using Gemini
 def classify_fields_with_gemini(fields):
@@ -175,9 +321,68 @@ def autofill_form(driver, classified_fields, user_data):
 # ── /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 Hello! I'm your Form-Filling Assistant Bot.\n"
-        "Send me a message like 'I want to fill [form name]'."
+        "👋 Hello! I'm your Form-Filling Assistant Bot.\n\n"
+        "📋 **How to use:**\n"
+        "1️⃣ Upload your documents (PDF, images, text files) to extract your information\n"
+        "2️⃣ Send me a message like 'I want to fill [form name]' to auto-fill forms\n\n"
+        "📄 **Supported documents:** Aadhaar, PAN, Passport, Resume, ID cards, etc.\n"
+        "🎯 **Supported forms:** JEE, NEET, Income Tax, and more!"
     )
+
+# ── Handle document uploads
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle document uploads and parse them with Gemini"""
+    document = update.message.document
+    telegram_id = update.message.from_user.id
+    
+    await update.message.reply_text("📄 Processing your document... Please wait!")
+    
+    try:
+        # Download the document
+        file = await context.bot.get_file(document.file_id)
+        
+        # Read document content
+        file_content = await file.download_as_bytearray()
+        
+        # Get file extension
+        file_extension = os.path.splitext(document.file_name)[1] if document.file_name else ''
+        
+        # Extract text based on file type
+        document_content = extract_text_from_document(file_content, document.file_name, file_extension)
+        
+        # Check if it's an image
+        is_image = file_extension.lower() in ['.jpg', '.jpeg', '.png', '.gif', '.bmp']
+        
+        # Parse with Gemini
+        parsed_data, error = parse_document_with_gemini(document_content, document.file_name, is_image)
+        
+        if error:
+            await update.message.reply_text(f"❌ Error parsing document: {error}")
+            return
+        
+        if not parsed_data:
+            await update.message.reply_text("❌ No information could be extracted from the document.")
+            return
+        
+        # Save to users.json
+        success, message = save_user_data(telegram_id, parsed_data)
+        
+        if success:
+            # Show extracted information
+            info_text = "✅ **Document processed successfully!**\n\n📋 **Extracted Information:**\n"
+            for key, value in parsed_data.items():
+                if key != "telegram_id" and value:
+                    info_text += f"• **{key.replace('_', ' ').title()}:** {value}\n"
+            
+            await update.message.reply_text(info_text)
+            await update.message.reply_text(
+                "🎉 Your information has been saved! You can now use form filling commands."
+            )
+        else:
+            await update.message.reply_text(f"❌ Error saving data: {message}")
+            
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error processing document: {str(e)}")
 
 # ── Handle user messages
 user_sessions = {}  # Store which user is waiting to attach Chrome
@@ -241,6 +446,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     print("🤖 Bot is running...")
     app.run_polling()

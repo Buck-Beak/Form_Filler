@@ -1,14 +1,18 @@
 [
     {
         "telegram_id": 8237966148,
-        "name": "Alice Johnson",
+        "name": "Nanda Krishna",
         "username": "alice_j",
         "password": "password123",
-        "dob": "2005-01-01",
+        "dob": "21/11/2003",
         "email": "alice@example.com",
         "mobile": "9876543210",
-        "pan":"1234",
-        "assessment_year":"2023-24"
+        "pan": "1234",
+        "assessment_year": "2023-24",
+        "address": "DIO: Krishna Kumar D, Krishna Vilasam, Perumpanachy PO, Madappally, PO:Perumpanachy, DIST:Kottayam, Kerala, 686536",
+        "father_name": "Krishna Kumar D",
+        "aadhaar_number": "6135 6410 5062",
+        "gender": "Female"
     },
     {
         "telegram_id": 987654321,
