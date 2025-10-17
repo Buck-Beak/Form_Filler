@@ -7,7 +7,7 @@
         "dob": "2005-01-01",
         "email": "alice@example.com",
         "mobile": "9876543210",
-        "pan":"1234",
+        "panAdhaarUserId":"1234",
         "assessment_year":"2023-24"
     },
     {
