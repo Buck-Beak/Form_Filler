@@ -1,0 +1,15 @@
+# Core
+python-dotenv
+
+# Google Gemini SDKs (pick one based on the file you run)
+# Used by: fetch_url.py, llm.py, selenium_test.py, lightning_test.py
+google-generativeai
+# Used by: test.py
+google-genai
+
+# Browsers / automation
+playwright
+selenium
+
+# Telegram bot
+python-telegram-bot>=21
