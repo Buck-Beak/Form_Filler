@@ -332,7 +332,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     form_key = request["form_key"]
     
     await query.edit_message_text(
-        f"🔄 Opening browser and filling form for: **{form_key}**\n"
+        f"🔄 Opening browser for: **{form_key}**\n"
         f"Please wait..."
     )
     
@@ -466,7 +466,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if fields:
                     break
                 await asyncio.sleep(1)  # Wait 1s and retry
-            print(f"\n📄 PRE-LOGIN: Extracted {len(fields)} fields")
+            
+            print(f"\n📄 INITIAL: Extracted {len(fields)} fields")
             print("=" * 60)
             for i, field in enumerate(fields, 1):
                 print(f"Field {i}:")
@@ -475,50 +476,104 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 print(f"  Type: {field.get('type')}")
                 print(f"  Label: {field.get('label')}")
                 print(f"  Placeholder: {field.get('placeholder')}")
+                print(f"  Frame: {field.get('frame')}")
                 print("-" * 40)
             print("=" * 60)
             
-            # If fields are found before login, fill them immediately
-            filled_count = 0
+            # Detect if this is a login page
+            login_keywords = ['password', 'username', 'user id', 'login', 'signin', 'sign in', 'email']
+            has_login_field = False
+            
             if fields:
                 classified = classify_fields_with_gemini(fields)
-                print(f"\n🤖 PRE-LOGIN: Classified {len(classified)} fields")
+                print(f"\n🤖 Classified {len(classified)} fields")
                 print("Classified fields:", json.dumps(classified, indent=2))
-                filled_count = await autofill_form(page, classified, user_data)
-                print(f"✅ Pre-login: filled {filled_count} fields\n")
-            
-            # Try to click a login button if present
-            login_clicked = False
-            login_selectors = [
-                "button:has-text('Login')",
-                "button:has-text('Sign In')",
-                "a:has-text('Login')",
-                "a:has-text('Sign In')",
-                "input[type=submit][value*='Login']",
-                "input[type=submit][value*='Sign In']",
-                "button[type=submit]:has-text('Login')",
-                "button[type=submit]:has-text('Sign In')"
-            ]
-            for sel in login_selectors:
-                try:
-                    btn = page.locator(sel)
-                    if await btn.count() > 0 and await btn.first.is_visible():
-                        await btn.first.click()
-                        await asyncio.sleep(3)  # Wait for navigation or form to appear
-                        login_clicked = True
-                        print(f"✅ Clicked login button: {sel}")
+                
+                # Check if any field is login-related
+                for field_data in classified:
+                    category = field_data.get('category', '').lower()
+                    if category in ['password', 'email'] or 'password' in category or 'email' in category:
+                        has_login_field = True
                         break
-                except Exception as e:
-                    print(f"Login button check failed: {e}")
-
-            # If login was clicked, re-scan for form fields and fill them
-            if login_clicked:
+                
+                # Also check labels/placeholders
+                if not has_login_field:
+                    for field in fields:
+                        label = field.get('label', '').lower()
+                        placeholder = field.get('placeholder', '').lower()
+                        field_type = field.get('type', '').lower()
+                        
+                        if field_type == 'password':
+                            has_login_field = True
+                            break
+                        
+                        for keyword in login_keywords:
+                            if keyword in label or keyword in placeholder:
+                                has_login_field = True
+                                break
+                        
+                        if has_login_field:
+                            break
+            
+            # If login page detected, notify user and wait
+            if has_login_field:
+                print("🔐 Login page detected! Waiting for user to log in...")
+                await context.bot.send_message(
+                    chat_id=request["chat_id"],
+                    text="🔐 **Login Required**\n\n"
+                         "The browser has opened to a login page.\n"
+                         "Please log in manually in the browser window.\n\n"
+                         "⏳ The bot will wait up to **3 minutes** for you to log in.\n"
+                         "After login, the form will be auto-filled automatically!"
+                )
+                
+                # Wait for navigation (login redirect) or form fields to appear
+                login_timeout = 180  # 3 minutes
+                start_time = asyncio.get_event_loop().time()
+                form_detected = False
+                
+                while (asyncio.get_event_loop().time() - start_time) < login_timeout:
+                    await asyncio.sleep(2)
+                    
+                    # Check for new fields (form fields appear after login)
+                    current_fields = await extract_form_fields(page)
+                    
+                    if current_fields:
+                        # Check if these are different from login fields
+                        classified_current = classify_fields_with_gemini(current_fields)
+                        has_form_fields = False
+                        
+                        for field_data in classified_current:
+                            category = field_data.get('category', '').lower()
+                            # Check for form fields (not login fields)
+                            if category not in ['password', 'email', 'other'] and category != '':
+                                has_form_fields = True
+                                break
+                        
+                        if has_form_fields:
+                            print("✅ Form fields detected after login!")
+                            form_detected = True
+                            fields = current_fields
+                            break
+                
+                if not form_detected:
+                    await context.bot.send_message(
+                        chat_id=request["chat_id"],
+                        text="⏰ Login timeout (3 minutes). Please try again.\n"
+                             "The browser will remain open for you to complete manually."
+                    )
+                    await asyncio.sleep(300)  # Keep browser open
+                    await browser.close()
+                    del pending_requests[request_id]
+                    return
+                
+                # Re-extract and classify after login
                 for attempt in range(10):
-                    new_fields = await extract_form_fields(page)
-                    if new_fields:
-                        fields = new_fields
+                    fields = await extract_form_fields(page)
+                    if fields:
                         break
                     await asyncio.sleep(1)
+                
                 print(f"\n📄 POST-LOGIN: Extracted {len(fields)} fields")
                 print("=" * 60)
                 for i, field in enumerate(fields, 1):
@@ -528,17 +583,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     print(f"  Type: {field.get('type')}")
                     print(f"  Label: {field.get('label')}")
                     print(f"  Placeholder: {field.get('placeholder')}")
+                    print(f"  Frame: {field.get('frame')}")
                     print("-" * 40)
                 print("=" * 60)
-                
-                if fields:
-                    classified = classify_fields_with_gemini(fields)
-                    print(f"\n🤖 POST-LOGIN: Classified {len(classified)} fields")
-                    print("Classified fields:", json.dumps(classified, indent=2))
-                    filled_count = await autofill_form(page, classified, user_data)
-                    print(f"✅ Post-login: filled {filled_count} fields\n")
-
-            # If still no fields, try after navigation (page reload)
+            
+            # If no fields found, try waiting longer
             if not fields:
                 await asyncio.sleep(2)
                 for attempt in range(10):
@@ -546,7 +595,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     if fields:
                         break
                     await asyncio.sleep(1)
-                print(f"\n📄 POST-NAVIGATION: Extracted {len(fields)} fields")
+                print(f"\n📄 FINAL CHECK: Extracted {len(fields)} fields")
                 print("=" * 60)
                 for i, field in enumerate(fields, 1):
                     print(f"Field {i}:")
@@ -555,15 +604,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     print(f"  Type: {field.get('type')}")
                     print(f"  Label: {field.get('label')}")
                     print(f"  Placeholder: {field.get('placeholder')}")
+                    print(f"  Frame: {field.get('frame')}")
                     print("-" * 40)
                 print("=" * 60)
-                
-                if fields:
-                    classified = classify_fields_with_gemini(fields)
-                    print(f"\n🤖 POST-NAVIGATION: Classified {len(classified)} fields")
-                    print("Classified fields:", json.dumps(classified, indent=2))
-                    filled_count = await autofill_form(page, classified, user_data)
-                    print(f"✅ Post-nav: filled {filled_count} fields\n")
 
             # If no fields found, log HTML for debugging
             if not fields:
@@ -573,8 +616,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.send_message(
                     chat_id=request["chat_id"],
                     text="⚠️ No form fields detected! Saved page HTML to debug_last_page.html.\n"
-                         "If the form loads after a button click or login, please specify the selector or steps."
+                         "If the form loads after a button click or login, please specify the selector or steps.\n\n"
+                         "Browser will remain open for 5 minutes for manual completion."
                 )
+                await asyncio.sleep(300)
                 await browser.close()
                 del pending_requests[request_id]
                 return
@@ -589,7 +634,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Send success message
             await context.bot.send_message(
                 chat_id=request["chat_id"],
-                text=f"✅ Form opened and auto-filled!\n"
+                text=f"✅ Form auto-filled!\n"
                      f"📊 Filled {filled_count} fields.\n\n"
                      f"👀 Please review the form in the browser and submit manually.\n"
                      f"The browser will stay open for 5 minutes."
