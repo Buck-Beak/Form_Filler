@@ -26,22 +26,23 @@ with open("users.json", "r") as f:
 # ── Store pending autofill requests ──
 pending_requests = {}
 
-# ── Extract form fields using Playwright ──
+# ── Extract form fields using Playwright (FIXED FOR IFRAMES) ──
 async def extract_form_fields(page):
-    """Extract input/textarea/select fields with labels"""
-    fields = []
+    """Extract input/textarea/select fields with labels, FROM ALL FRAMES"""
     
-    # JavaScript to extract field info
     js_code = """
     () => {
         const fields = [];
-        const inputs = document.querySelectorAll('input, textarea, select');
+        const inputs = document.querySelectorAll('input:not([type="hidden"]):not([type="image"]), textarea, select');
         
         inputs.forEach(inp => {
-            const field_id = inp.id;
-            const field_name = inp.name;
-            const placeholder = inp.placeholder;
+            const field_id = inp.id || '';
+            const field_name = inp.name || '';
+            const placeholder = inp.placeholder || '';
             const field_type = inp.type || inp.tagName.toLowerCase();
+            const formcontrolname = inp.getAttribute('formcontrolname') || '';
+            const aria_label = inp.getAttribute('aria-label') || '';
+            
             let label_text = '';
             
             // Try standard label lookup
@@ -52,38 +53,68 @@ async def extract_form_fields(page):
             
             // Advanced lookup - find nearest label
             if (!label_text) {
-                const parent = inp.closest('div, td, li');
+                const parent = inp.closest('div, td, li, mat-form-field');
                 if (parent) {
-                    const label = parent.querySelector('label');
+                    const label = parent.querySelector('label, mat-label');
                     if (label) label_text = label.innerText;
                 }
             }
             
             // Fallback to aria-label or placeholder
             if (!label_text) {
-                label_text = inp.getAttribute('aria-label') || 
-                           inp.getAttribute('aria-placeholder') || 
-                           placeholder || '';
+                label_text = aria_label || placeholder || '';
             }
             
             // Clean up
             label_text = label_text.replace(/[*:]/g, '').trim();
             
-            fields.push({
-                id: field_id,
-                name: field_name,
-                placeholder: placeholder,
-                type: field_type,
-                label: label_text
-            });
+            // Only include visible, non-image inputs
+            const rect = inp.getBoundingClientRect();
+            const isVisible = rect.width > 0 && rect.height > 0;
+            
+            if (isVisible) {
+                fields.push({
+                    id: field_id,
+                    name: field_name,
+                    placeholder: placeholder,
+                    type: field_type,
+                    label: label_text,
+                    formcontrolname: formcontrolname,
+                    aria_label: aria_label
+                });
+            }
         });
-        
         return fields;
     }
     """
     
-    fields = await page.evaluate(js_code)
-    return fields
+    all_fields = []
+    
+    # Extract from main page
+    try:
+        main_fields = await page.evaluate(js_code)
+        for f in main_fields:
+            f['frame'] = 'main'
+        all_fields.extend(main_fields)
+        print(f"  → Main page: {len(main_fields)} fields")
+    except Exception as e:
+        print(f"⚠️ Main page extraction failed: {e}")
+    
+    # Extract from ALL frames (iframes)
+    for frame in page.frames:
+        if frame == page.main_frame:
+            continue  # Already did main
+        try:
+            frame_fields = await frame.evaluate(js_code)
+            for f in frame_fields:
+                f['frame'] = frame.url or frame.name or 'unnamed_frame'
+            all_fields.extend(frame_fields)
+            if frame_fields:
+                print(f"  → Frame {frame.url or frame.name}: {len(frame_fields)} fields")
+        except Exception as e:
+            print(f"⚠️ Frame {frame.url} extraction failed: {e}")
+    
+    return all_fields
 
 # ── Classify fields using Gemini ──
 def classify_fields_with_gemini(fields):
@@ -132,54 +163,91 @@ Fields:
 
 # ── Autofill form using Playwright ──
 async def autofill_form(page, classified_fields, user_data):
-    """Fill form fields with user data"""
+    """Fill form fields with user data (SUPPORTS IFRAMES)"""
     filled_count = 0
-    
+
+    # Map Gemini categories -> your users.json keys
+    KEY_MAP = {
+        "date_of_birth": "dob",
+        "dob": "dob",
+        "phone": "mobile",
+        "mobile": "mobile",
+        "pan": "panAdhaarUserId",
+        "aadhaar_number": "panAdhaarUserId",
+        "aadhaar": "panAdhaarUserId",
+    }
+
     for mapping in classified_fields:
         field_id = mapping.get("id")
         field_name = mapping.get("name")
         category = mapping.get("category")
-        
-        # Get value from user data
-        value = user_data.get(category)
-        
+        field_frame = mapping.get("frame", "main")
+
+        # Resolve user data value with KEY_MAP
+        data_key = KEY_MAP.get(category, category)
+        value = user_data.get(data_key)
+
         if not value:
+            print(f"↪ Skip: no user value for category='{category}' (mapped key='{data_key}')")
             continue
-        
-        # Try to fill by ID first, then by name
-        selector = None
+
+        # Build candidate selectors
+        candidates = []
         if field_id:
-            selector = f"#{field_id}"
-        elif field_name:
-            selector = f"[name='{field_name}']"
-        
-        if not selector:
+            candidates.append(f"#{field_id}")
+        if field_name:
+            candidates.append(f"[name='{field_name}']")
+        if mapping.get("formcontrolname"):
+            candidates.append(f"[formcontrolname='{mapping['formcontrolname']}']")
+        if mapping.get("placeholder"):
+            candidates.append(f"[placeholder='{mapping['placeholder']}']")
+        if mapping.get("aria_label"):
+            candidates.append(f"[aria-label='{mapping['aria_label']}']")
+
+        if not candidates:
+            print(f"↪ Skip: no selector candidates for category='{category}'")
             continue
-        
-        try:
-            # Wait for element and fill it with human-like behavior
-            element = page.locator(selector).first
-            
-            # Wait a bit before interacting (more human-like)
-            await asyncio.sleep(0.5)
-            
-            if await element.is_visible(timeout=5000):
-                # Click to focus
-                await element.click()
+
+        # Find the correct frame
+        target_frame = page.main_frame
+        if field_frame != "main":
+            for frame in page.frames:
+                if frame.url == field_frame or frame.name == field_frame:
+                    target_frame = frame
+                    break
+
+        # Try each selector
+        filled_this = False
+        for selector in candidates:
+            try:
+                element = target_frame.locator(selector).first
                 await asyncio.sleep(0.2)
-                
-                # Clear and fill
-                await element.clear()
+                if not await element.count():
+                    continue
+                if not await element.is_visible():
+                    continue
+
+                # Focus and clear
+                await element.click()
                 await asyncio.sleep(0.1)
                 
-                # Type with delays (more human-like)
-                await element.type(str(value), delay=50)  # 50ms between keystrokes
-                
+                try:
+                    await element.clear()
+                except Exception:
+                    await element.fill("")
+
+                await asyncio.sleep(0.1)
+                await element.type(str(value), delay=50)
                 filled_count += 1
-                print(f"✅ Filled '{category}' into {selector}")
-        except Exception as e:
-            print(f"⚠️ Could not fill {selector} ({category}): {e}")
-    
+                filled_this = True
+                print(f"✅ Filled '{category}' (mapped '{data_key}') via {selector} in frame {field_frame}")
+                break
+            except Exception as e:
+                print(f"⚠️ Try selector failed for '{category}' via {selector}: {e}")
+
+        if not filled_this:
+            print(f"❌ Could not fill '{category}' (mapped '{data_key}') — no selector matched")
+
     return filled_count
 
 # ── Get form URL by user prompt ──
@@ -342,9 +410,31 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             # Navigate to form with retry logic
             try:
+                print(f"🌐 Navigating to: {url}")
                 await page.goto(url, wait_until="domcontentloaded", timeout=60000)
-                # Wait a bit more for dynamic content to load
+                
+                # Wait for Angular to initialize (check for common Angular markers)
+                print("⏳ Waiting for Angular app to load...")
+                await asyncio.sleep(5)  # Give Angular time to bootstrap
+                
+                # Try to wait for common Angular root elements
+                try:
+                    await page.wait_for_selector('app-root, [ng-app], [ng-version]', timeout=10000)
+                    print("✅ Angular app detected")
+                except:
+                    print("⚠️ No Angular root found, continuing anyway")
+                
+                # Wait for network to be idle (all API calls done)
+                try:
+                    await page.wait_for_load_state('networkidle', timeout=15000)
+                    print("✅ Network idle")
+                except:
+                    print("⚠️ Network still active, continuing anyway")
+                
+                # Additional wait for lazy-loaded components
                 await asyncio.sleep(3)
+                
+                print(f"📄 Total frames on page: {len(page.frames)}")
                 
                 # Check for permission denied or error messages
                 page_content = await page.content()
