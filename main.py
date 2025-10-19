@@ -18,6 +18,14 @@ with open("users.json", "r") as f:
 
 pending_requests = {}
 
+# Helper: wait until the browser page is closed or a timeout elapses
+async def wait_until_page_closed(page, timeout: int = 300):
+    try:
+        await asyncio.wait_for(page.wait_for_event("close"), timeout=timeout)
+    except asyncio.TimeoutError:
+        # Timed out waiting for the user to close the page; proceed to cleanup
+        pass
+
 genai.configure(api_key=GEMINI_API_KEY)
 gemini_model = genai.GenerativeModel('gemini-2.5-flash')
 
@@ -104,11 +112,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text=f"✅ Form auto-filled!\n"
                  f"📊 Filled {filled_count} fields.\n\n"
                  f"👀 Please review the form in the browser and submit manually.\n"
-                 f"The browser will stay open for 5 minutes."
+                 f"The browser will stay open for up to 5 minutes, or closes sooner if you exit the window."
         )
-        await asyncio.sleep(300)
-        await browser.close()
-        await p.stop()
+        # Do not block for a fixed sleep; wait until the user closes the page or timeout
+        await wait_until_page_closed(page, timeout=300)
+        try:
+            await browser.close()
+        except Exception:
+            pass
+        try:
+            await p.stop()
+        except Exception:
+            pass
     except Exception as e:
         error_msg = f"❌ Error filling form: {str(e)}"
         print(error_msg)
@@ -119,7 +134,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     del pending_requests[request_id]
 
 if __name__ == "__main__":
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    # Enable concurrent handling of updates so a long-running fill does not block new messages
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).concurrent_updates(True).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(CallbackQueryHandler(button_handler))
