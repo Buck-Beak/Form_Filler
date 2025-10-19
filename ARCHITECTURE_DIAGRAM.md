@@ -96,15 +96,15 @@ graph TB
     B -->|12. Send Messages| H2
     H2 -->|Deliver| A
     
-    style A fill:#e1f5ff
-    style B fill:#fff4e1
-    style D fill:#f0e1ff
-    style E fill:#e1ffe1
-    style F fill:#ffe1e1
-    style G fill:#ffe1f5
-    style H1 fill:#ffd7d7
-    style H2 fill:#ffd7d7
-    style H3 fill:#ffd7d7
+    style A fill:#87ceeb,stroke:#333,stroke-width:2px,color:#000
+    style B fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
+    style D fill:#dda0dd,stroke:#333,stroke-width:2px,color:#000
+    style E fill:#90ee90,stroke:#333,stroke-width:2px,color:#000
+    style F fill:#ffb6c1,stroke:#333,stroke-width:2px,color:#000
+    style G fill:#ffb6e1,stroke:#333,stroke-width:2px,color:#000
+    style H1 fill:#ff6b6b,stroke:#333,stroke-width:2px,color:#fff
+    style H2 fill:#ff6b6b,stroke:#333,stroke-width:2px,color:#fff
+    style H3 fill:#ff6b6b,stroke:#333,stroke-width:2px,color:#fff
 ```
 
 ## Component Interaction Flow
@@ -224,9 +224,9 @@ flowchart LR
     B6 --> C3
     B8 --> C3
     
-    style INPUT fill:#e1f5ff
-    style PROCESSING fill:#fff4e1
-    style OUTPUT fill:#e1ffe1
+    style INPUT fill:#87ceeb,stroke:#333,stroke-width:2px,color:#000
+    style PROCESSING fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
+    style OUTPUT fill:#90ee90,stroke:#333,stroke-width:2px,color:#000
 ```
 
 ## Module Dependency Graph
@@ -265,18 +265,18 @@ graph TD
     A -->|uses| K
     E -->|uses| L
     
-    style A fill:#ff9999
-    style B fill:#99ccff
-    style C fill:#99ccff
-    style D fill:#99ccff
-    style E fill:#99ccff
-    style F fill:#99ccff
-    style G fill:#ffcc99
-    style H fill:#ffcc99
-    style I fill:#ffcc99
-    style J fill:#ccff99
-    style K fill:#ccff99
-    style L fill:#ccff99
+    style A fill:#ff6b6b,stroke:#333,stroke-width:2px,color:#fff
+    style B fill:#4ecdc4,stroke:#333,stroke-width:2px,color:#000
+    style C fill:#4ecdc4,stroke:#333,stroke-width:2px,color:#000
+    style D fill:#4ecdc4,stroke:#333,stroke-width:2px,color:#000
+    style E fill:#4ecdc4,stroke:#333,stroke-width:2px,color:#000
+    style F fill:#4ecdc4,stroke:#333,stroke-width:2px,color:#000
+    style G fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
+    style H fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
+    style I fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
+    style J fill:#95e1d3,stroke:#333,stroke-width:2px,color:#000
+    style K fill:#95e1d3,stroke:#333,stroke-width:2px,color:#000
+    style L fill:#95e1d3,stroke:#333,stroke-width:2px,color:#000
 ```
 
 ## Stealth Browser Architecture
@@ -333,12 +333,12 @@ graph TB
     
     F1 & F2 & F3 & F4 --> G
     
-    style A fill:#e1f5ff
-    style B fill:#e1f5ff
-    style C1 fill:#fff4e1
-    style C2 fill:#fff4e1
-    style C3 fill:#fff4e1
-    style G fill:#e1ffe1
+    style A fill:#87ceeb,stroke:#333,stroke-width:2px,color:#000
+    style B fill:#87ceeb,stroke:#333,stroke-width:2px,color:#000
+    style C1 fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
+    style C2 fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
+    style C3 fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
+    style G fill:#90ee90,stroke:#333,stroke-width:2px,color:#000
 ```
 
 ## Field Extraction Pipeline
@@ -380,13 +380,13 @@ flowchart TD
     P --> Q
     Q --> R
     
-    style A fill:#e1f5ff
-    style M fill:#e1ffe1
-    style N fill:#fff4e1
-    style O fill:#fff4e1
-    style P fill:#fff4e1
-    style Q fill:#fff4e1
-    style R fill:#fff4e1
+    style A fill:#87ceeb,stroke:#333,stroke-width:2px,color:#000
+    style M fill:#90ee90,stroke:#333,stroke-width:2px,color:#000
+    style N fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
+    style O fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
+    style P fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
+    style Q fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
+    style R fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
 ```
 
 ## Autofill Decision Tree
@@ -436,11 +436,11 @@ flowchart TD
     W --> B
     O --> B
     
-    style A fill:#e1f5ff
-    style Z fill:#e1ffe1
-    style W fill:#ccffcc
-    style I fill:#ffcccc
-    style O fill:#ffcccc
+    style A fill:#87ceeb,stroke:#333,stroke-width:2px,color:#000
+    style Z fill:#90ee90,stroke:#333,stroke-width:2px,color:#000
+    style W fill:#90ee90,stroke:#333,stroke-width:2px,color:#000
+    style I fill:#ff6b6b,stroke:#333,stroke-width:2px,color:#fff
+    style O fill:#ff6b6b,stroke:#333,stroke-width:2px,color:#fff
 ```
 
 ## Error Handling Flow
@@ -494,16 +494,16 @@ flowchart TD
     Z --> AB[Wait 5min → Close browser]
     AB --> AA
     
-    style C fill:#ffcccc
-    style E fill:#ffcccc
-    style H fill:#ffcccc
-    style K fill:#ffcccc
-    style Q fill:#ffffcc
-    style S fill:#ffffcc
-    style V fill:#ffffcc
-    style X fill:#ffcccc
-    style W fill:#ccffcc
-    style Z fill:#ccffcc
+    style C fill:#ff6b6b,stroke:#333,stroke-width:2px,color:#fff
+    style E fill:#ff6b6b,stroke:#333,stroke-width:2px,color:#fff
+    style H fill:#ff6b6b,stroke:#333,stroke-width:2px,color:#fff
+    style K fill:#ff6b6b,stroke:#333,stroke-width:2px,color:#fff
+    style Q fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
+    style S fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
+    style V fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
+    style X fill:#ff6b6b,stroke:#333,stroke-width:2px,color:#fff
+    style W fill:#90ee90,stroke:#333,stroke-width:2px,color:#000
+    style Z fill:#90ee90,stroke:#333,stroke-width:2px,color:#000
 ```
 
 ## Deployment Architecture
@@ -559,12 +559,12 @@ graph TB
     F --> N
     F --> O
     
-    style A fill:#e1f5ff
-    style K fill:#ffe1e1
-    style L fill:#ffe1e1
-    style M fill:#fff4e1
-    style N fill:#fff4e1
-    style O fill:#fff4e1
+    style A fill:#87ceeb,stroke:#333,stroke-width:2px,color:#000
+    style K fill:#ff6b6b,stroke:#333,stroke-width:2px,color:#fff
+    style L fill:#ff6b6b,stroke:#333,stroke-width:2px,color:#fff
+    style M fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
+    style N fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
+    style O fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
 ```
 
 ---
