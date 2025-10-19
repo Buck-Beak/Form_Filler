@@ -1,0 +1,628 @@
+================================================================================
+              PLAYWRIGHT FORM-FILLER BOT - WORKFLOW DOCUMENTATION
+================================================================================
+
+PROJECT OVERVIEW:
+-----------------
+This is a Telegram-based bot that automates form-filling on websites using 
+Playwright browser automation, AI-powered field classification (Google Gemini), 
+and user data mapping. The bot is designed to handle complex government and 
+institutional forms with anti-bot detection measures.
+
+================================================================================
+ARCHITECTURE & FILE STRUCTURE:
+================================================================================
+
+The project is modular, split into the following components:
+
+1. main.py                  → Telegram bot entry point & orchestration
+2. browser_utils.py         → Playwright browser setup with stealth features
+3. form_extractor.py        → Extract form fields from all frames
+4. field_classifier.py      → AI-based field classification using Gemini
+5. form_filler.py           → Autofill logic with selector fallbacks
+6. config.py                → Environment variable configuration
+7. forms.json               → Database of form URLs and metadata
+8. users.json               → Database of user data for autofill
+9. .env                     → Environment secrets (Telegram token, Gemini API key)
+
+================================================================================
+DETAILED WORKFLOW:
+================================================================================
+
+PHASE 1: BOT INITIALIZATION
+----------------------------
+File: main.py (if __name__ == "__main__")
+
+1. Load Configuration:
+   - Load TELEGRAM_TOKEN and GEMINI_API_KEY from config.py (which reads .env)
+   - Initialize Google Generative AI (Gemini) model: gemini-2.5-flash
+
+2. Load Databases:
+   - Load forms.json → Dictionary of form metadata (name, URL, description)
+     Example: {"JEE Main": {"url": "https://jee.nta.ac.in/...", ...}}
+   - Load users.json → Array of user profiles with telegram_id and personal data
+     Example: [{"telegram_id": 123456, "name": "John", "email": "...", ...}]
+
+3. Initialize Data Structures:
+   - pending_requests = {} → Stores active form-fill requests with unique IDs
+
+4. Start Telegram Bot:
+   - Create Telegram Application using ApplicationBuilder
+   - Register handlers:
+     * /start command → start() function
+     * Text messages → handle_message() function
+     * Button callbacks → button_handler() function
+   - Start polling for updates
+
+================================================================================
+
+PHASE 2: USER INTERACTION (Telegram)
+-------------------------------------
+File: main.py (start, handle_message)
+
+Step 1: User sends /start command
+   ↓
+   Bot responds with welcome message explaining how to use it
+
+Step 2: User sends a text message (e.g., "I want to fill JEE form")
+   ↓
+   Function: handle_message(update, context)
+   
+   2.1 Extract user information:
+       - Get telegram_id from update.message.from_user.id
+       - Get user_text from update.message.text
+   
+   2.2 Form URL Matching:
+       - Call get_form_url(user_text)
+       - Convert user_text to lowercase
+       - Search forms.json for matching form key
+       - Return (url, form_key) if found, else (None, None)
+   
+   2.3 User Data Lookup:
+       - Search users.json for user with matching telegram_id
+       - If not found → Send error message and return
+   
+   2.4 Create Pending Request:
+       - Generate unique request_id = "{telegram_id}_{timestamp}"
+       - Store in pending_requests dictionary:
+         {
+           "url": form_url,
+           "form_key": form_name,
+           "user_data": user_profile,
+           "chat_id": chat_id
+         }
+   
+   2.5 Send Interactive Button:
+       - Create InlineKeyboardButton: "🚀 Open & Auto-Fill Form"
+       - Button callback_data: "fill_{request_id}"
+       - Send message with form details and button
+
+================================================================================
+
+PHASE 3: BROWSER AUTOMATION TRIGGER
+------------------------------------
+File: main.py (button_handler)
+
+Step 3: User clicks "Open & Auto-Fill Form" button
+   ↓
+   Function: button_handler(update, context)
+   
+   3.1 Validate Request:
+       - Extract request_id from callback_data
+       - Check if request_id exists in pending_requests
+       - If invalid/expired → Send error and return
+   
+   3.2 Retrieve Request Data:
+       - url = request["url"]
+       - user_data = request["user_data"]
+       - form_key = request["form_key"]
+       - chat_id = request["chat_id"]
+   
+   3.3 Update User:
+       - Edit button message to show "🔄 Opening browser..."
+
+================================================================================
+
+PHASE 4: STEALTH BROWSER LAUNCH
+--------------------------------
+File: browser_utils.py (launch_browser)
+
+Step 4: Initialize Playwright with anti-detection
+   ↓
+   Function: launch_browser() → Returns (playwright, browser, context, page)
+   
+   4.1 Start Playwright:
+       - await async_playwright().start()
+   
+   4.2 Launch Chromium Browser (headless=False for visibility):
+       Browser Arguments (Anti-Detection):
+       - --disable-blink-features=AutomationControlled
+         → Hides the fact that browser is controlled by automation
+       - --disable-dev-shm-usage
+         → Prevents shared memory issues
+       - --no-sandbox, --disable-setuid-sandbox
+         → Bypass sandboxing (required for some environments)
+       - --disable-web-security
+         → Disable CORS restrictions
+       - --disable-features=IsolateOrigins,site-per-process
+         → Disable site isolation for iframe access
+   
+   4.3 Create Browser Context (Stealth Profile):
+       - viewport: 1920x1080 (realistic desktop resolution)
+       - user_agent: Chrome 131 on Windows (realistic UA string)
+       - locale: en-US
+       - timezone_id: Asia/Kolkata
+       - permissions: ['geolocation']
+       - extra_http_headers: Realistic browser headers including:
+         * Accept, Accept-Language, Accept-Encoding
+         * Sec-Fetch-* headers (modern browser fingerprint)
+         * sec-ch-ua headers (Chrome user agent client hints)
+   
+   4.4 Create New Page & Inject Stealth Scripts:
+       JavaScript Injection (add_init_script):
+       - navigator.webdriver → undefined (hide automation flag)
+       - window.chrome → { runtime: {} } (fake Chrome object)
+       - navigator.languages → ['en-US','en']
+       - navigator.platform → 'Win32'
+   
+   4.5 Return:
+       - Playwright instance (for cleanup)
+       - Browser instance
+       - Browser context
+       - Page object (ready for automation)
+
+================================================================================
+
+PHASE 5: FORM PAGE NAVIGATION
+------------------------------
+File: main.py (button_handler - continued)
+
+Step 5: Navigate to form URL
+   ↓
+   await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+   
+   5.1 Load Page:
+       - Navigate to the form URL
+       - Wait until DOM is fully loaded (not necessarily all images/scripts)
+       - Timeout: 60 seconds
+   
+   5.2 Initial Stability Wait:
+       - await asyncio.sleep(5)
+       - Allow JavaScript frameworks to initialize
+       - Wait for dynamic form fields to render
+       - Essential for Angular/React/Vue forms
+
+================================================================================
+
+PHASE 6: FORM FIELD EXTRACTION
+-------------------------------
+File: form_extractor.py (extract_form_fields)
+
+Step 6: Extract all form fields from page and iframes
+   ↓
+   Function: extract_form_fields(page) → Returns list of field dictionaries
+   
+   6.1 Define JavaScript Extraction Logic:
+       JavaScript Code (js_code):
+       - Query all visible input elements:
+         * input (excluding type=hidden, type=image)
+         * textarea
+         * select
+       
+       - For each element, extract:
+         * id (field ID attribute)
+         * name (field name attribute)
+         * placeholder (placeholder text)
+         * type (input type or tag name)
+         * formcontrolname (Angular-specific attribute)
+         * aria-label (accessibility label)
+       
+       - Label Text Extraction (multi-strategy):
+         a) Find <label for="field_id"> (explicit label)
+         b) Find nearest parent container (div, td, li, mat-form-field)
+            and search for <label> or <mat-label> inside
+         c) Fallback to aria-label or placeholder
+         d) Clean label: remove asterisks (*), colons (:), trim whitespace
+       
+       - Visibility Check:
+         * getBoundingClientRect() → Get element dimensions
+         * Only include if width > 0 AND height > 0
+       
+       - Build field object:
+         {
+           "id": field_id,
+           "name": field_name,
+           "placeholder": placeholder,
+           "type": field_type,
+           "label": label_text,
+           "formcontrolname": formcontrolname,
+           "aria_label": aria_label
+         }
+   
+   6.2 Extract from Main Frame:
+       - await page.evaluate(js_code)
+       - Mark all fields with frame: 'main'
+       - Add to all_fields list
+       - Handle errors (print warning, continue)
+   
+   6.3 Extract from All Child Frames (iframes):
+       - Iterate through page.frames
+       - Skip main_frame (already processed)
+       - For each frame:
+         * await frame.evaluate(js_code)
+         * Mark fields with frame: frame.url or frame.name
+         * Add to all_fields list
+         * Handle errors (print warning, continue)
+   
+   6.4 Return Aggregated Fields:
+       - List of all fields from main frame + all iframes
+       - Each field includes frame identifier for later filling
+   
+   6.5 Retry Logic (in main.py):
+       - Try extraction up to 10 times with 1-second intervals
+       - Break if fields found
+       - Handles slow-loading forms or delayed rendering
+
+================================================================================
+
+PHASE 7: AI-POWERED FIELD CLASSIFICATION
+-----------------------------------------
+File: field_classifier.py (classify_fields_with_gemini)
+
+Step 7: Use Google Gemini to classify each field
+   ↓
+   Function: classify_fields_with_gemini(fields, gemini_model) → Returns classified fields
+   
+   7.1 Build Classification Prompt:
+       Prompt Structure:
+       - Instruction: "You are given form fields from a webpage..."
+       - Field Attributes: id, name, placeholder, type, label
+       - Categories List:
+         * name, email, password, phone, address
+         * father_name, mother_name
+         * aadhaar_number, date_of_birth, dob
+         * assessment_year, pan, mobile
+         * other (catch-all)
+       - Output Format: JSON array only (no markdown)
+       - Include actual field data as JSON
+   
+   7.2 Send to Gemini:
+       - gemini_model.generate_content(prompt)
+       - Gemini analyzes field attributes and labels
+       - Returns classification in JSON format
+   
+   7.3 Parse Response:
+       - Get raw text from response
+       - Remove markdown code fences (```json, ```)
+       - Use regex to clean:
+         * re.sub(r"^```[a-zA-Z]*\n?", "", raw_text)
+         * re.sub(r"```$", "", raw_text)
+       - Parse JSON: json.loads(raw_text)
+   
+   7.4 Error Handling:
+       - If JSON parsing fails → print error and raw text
+       - Return empty list []
+   
+   7.5 Output Format:
+       [
+         {"id": "email_field", "name": "user_email", "category": "email"},
+         {"id": "phone_input", "name": "mobile_no", "category": "phone"},
+         ...
+       ]
+
+================================================================================
+
+PHASE 8: INTELLIGENT AUTOFILL
+------------------------------
+File: form_filler.py (autofill_form)
+
+Step 8: Fill form fields with user data
+   ↓
+   Function: autofill_form(page, classified_fields, user_data) → Returns filled_count
+   
+   8.1 Key Mapping (Category → User Data):
+       KEY_MAP = {
+         "date_of_birth": "dob",
+         "dob": "dob",
+         "phone": "mobile",
+         "mobile": "mobile",
+         "pan": "panAdhaarUserId",
+         "aadhaar_number": "panAdhaarUserId",
+         "aadhaar": "panAdhaarUserId"
+       }
+       - Maps AI categories to actual user_data keys
+       - Handles synonyms and variations
+   
+   8.2 For Each Classified Field:
+       a) Extract field metadata:
+          - field_id, field_name, category, field_frame
+       
+       b) Map category to user data:
+          - data_key = KEY_MAP.get(category, category)
+          - value = user_data.get(data_key)
+          - If no value → Skip field (print diagnostic)
+       
+       c) Build Selector Candidates (priority order):
+          1. #field_id (ID selector)
+          2. [name='field_name'] (name attribute)
+          3. [formcontrolname='...'] (Angular)
+          4. [placeholder='...'] (placeholder)
+          5. [aria-label='...'] (accessibility)
+       
+       d) Locate Target Frame:
+          - Default: page.main_frame
+          - If field_frame != "main":
+            * Search page.frames for matching URL or name
+            * Use matched frame as target_frame
+       
+       e) Try Each Selector (until success):
+          For each selector in candidates:
+            i)   Locate element: target_frame.locator(selector).first
+            ii)  Wait: await asyncio.sleep(0.2)
+            iii) Check element exists: await element.count()
+            iv)  Check visibility: await element.is_visible()
+            v)   Click to focus: await element.click()
+            vi)  Wait: await asyncio.sleep(0.1)
+            vii) Clear field:
+                 - Try: await element.clear()
+                 - Fallback: await element.fill("")
+            viii) Wait: await asyncio.sleep(0.1)
+            ix)  Type value: await element.type(str(value), delay=50)
+                 - Types character-by-character with 50ms delay
+                 - Mimics human typing behavior
+            x)   Log success & break loop
+          
+          If selector fails → Try next selector
+          If all selectors fail → Log failure
+       
+       f) Track filled count
+   
+   8.3 Return Statistics:
+       - Total number of successfully filled fields
+
+================================================================================
+
+PHASE 9: USER NOTIFICATION & CLEANUP
+-------------------------------------
+File: main.py (button_handler - completion)
+
+Step 9: Inform user and manage browser lifecycle
+   ↓
+   
+   9.1 Send Success Message (via Telegram):
+       - "✅ Form auto-filled!"
+       - "📊 Filled X fields."
+       - "👀 Please review the form in the browser and submit manually."
+       - "The browser will stay open for 5 minutes."
+   
+   9.2 Keep Browser Open:
+       - await asyncio.sleep(300)  # 5 minutes
+       - Allows user to review and manually submit
+       - User can modify auto-filled data if needed
+   
+   9.3 Cleanup:
+       - await browser.close()
+       - await playwright.stop()
+       - del pending_requests[request_id]
+   
+   9.4 Error Handling:
+       - Try-except wraps entire automation process
+       - On error:
+         * Print error to console
+         * Send error message to user via Telegram
+         * Clean up pending_requests
+
+================================================================================
+
+DATA FLOW DIAGRAM:
+================================================================================
+
+User (Telegram)
+    |
+    | 1. Send message: "Fill JEE form"
+    ↓
+main.py::handle_message()
+    |
+    | 2. Lookup form URL in forms.json
+    | 3. Lookup user data in users.json
+    | 4. Create pending_request
+    | 5. Send button to user
+    ↓
+User clicks button
+    ↓
+main.py::button_handler()
+    |
+    | 6. Retrieve request from pending_requests
+    ↓
+browser_utils.py::launch_browser()
+    |
+    | 7. Start Playwright
+    | 8. Launch Chromium with stealth config
+    | 9. Inject anti-detection scripts
+    | 10. Return (playwright, browser, context, page)
+    ↓
+main.py::button_handler() (continued)
+    |
+    | 11. Navigate to form URL
+    | 12. Wait for page load + stability
+    ↓
+form_extractor.py::extract_form_fields()
+    |
+    | 13. Run JS extraction on main frame
+    | 14. Run JS extraction on all iframes
+    | 15. Return aggregated field list
+    ↓
+field_classifier.py::classify_fields_with_gemini()
+    |
+    | 16. Build classification prompt
+    | 17. Send to Google Gemini API
+    | 18. Parse JSON response
+    | 19. Return classified fields
+    ↓
+form_filler.py::autofill_form()
+    |
+    | 20. For each field:
+    |     - Map category to user data
+    |     - Build selector candidates
+    |     - Locate in correct frame
+    |     - Fill with typing delay
+    | 21. Return filled count
+    ↓
+main.py::button_handler() (completion)
+    |
+    | 22. Send success message to user
+    | 23. Keep browser open (5 min)
+    | 24. Close browser & cleanup
+    ↓
+End
+
+================================================================================
+
+KEY FEATURES & DESIGN DECISIONS:
+================================================================================
+
+1. STEALTH & ANTI-DETECTION:
+   - Disabled webdriver flag
+   - Realistic browser fingerprint (UA, headers, viewport)
+   - Human-like typing delays
+   - Disabled automation-controlled blink features
+
+2. IFRAME SUPPORT:
+   - Extracts fields from all frames (not just main)
+   - Tracks frame origin for each field
+   - Fills fields in correct frame context
+
+3. ROBUST FIELD DETECTION:
+   - Multiple label detection strategies
+   - Visibility filtering (only visible fields)
+   - Support for Angular (formcontrolname), standard HTML, accessibility attributes
+
+4. AI-POWERED CLASSIFICATION:
+   - Gemini analyzes field semantics
+   - Handles variations in naming conventions
+   - Flexible category mapping
+
+5. FAULT TOLERANCE:
+   - Retry logic for field extraction (10 attempts)
+   - Multiple selector fallbacks per field
+   - Graceful error handling with diagnostics
+
+6. USER EXPERIENCE:
+   - Interactive Telegram buttons
+   - Real-time status updates
+   - Browser stays open for manual review
+   - Clear success/error messages
+
+7. SECURITY & PRIVACY:
+   - Manual login (no password automation)
+   - User reviews before submission
+   - Environment variables for secrets
+   - Local user data storage
+
+8. MAINTAINABILITY:
+   - Modular architecture (6 separate files)
+   - Clear separation of concerns
+   - Comprehensive logging
+   - JSON-based configuration
+
+================================================================================
+
+DEPENDENCIES & REQUIREMENTS:
+================================================================================
+
+From requirements.txt:
+- playwright                → Browser automation
+- python-telegram-bot       → Telegram bot API
+- google-generativeai       → Gemini AI for classification
+- python-dotenv             → Environment variable management
+
+Additional Setup:
+- Playwright browsers: `playwright install chromium`
+- Telegram bot token from BotFather
+- Google Gemini API key
+- Populated forms.json and users.json
+
+================================================================================
+
+ERROR SCENARIOS & HANDLING:
+================================================================================
+
+1. Form Not Found:
+   - User message doesn't match any key in forms.json
+   - Response: "❌ Form not found in my database."
+
+2. User Not Found:
+   - telegram_id not in users.json
+   - Response: "❌ Your user data is not in the database."
+
+3. Page Load Timeout:
+   - Form URL doesn't load within 60 seconds
+   - Exception caught, error message sent to user
+
+4. Field Extraction Failure:
+   - JavaScript errors in frame
+   - Retry up to 10 times with 1-second delays
+   - Continues with partial extraction
+
+5. Gemini Classification Error:
+   - JSON parsing fails
+   - Returns empty list, no fields classified
+   - Logged to console for debugging
+
+6. Autofill Failures:
+   - Field not found with any selector
+   - Logged: "❌ Could not fill 'category'"
+   - Continues to next field (partial fill)
+
+7. Browser Crashes:
+   - Playwright errors during automation
+   - Exception caught, cleanup performed
+   - Error message sent to user
+
+================================================================================
+
+FUTURE ENHANCEMENTS & LIMITATIONS:
+================================================================================
+
+Current Limitations:
+- Manual login required (by design for security)
+- No support for multi-step forms
+- No CAPTCHA handling
+- No OTP automation
+- Single form per request
+
+Potential Improvements:
+- Parallel frame extraction for speed
+- Configurable delays (speed vs. stealth tradeoff)
+- Form submission automation (optional)
+- Screenshot capture for diagnostics
+- Multi-step form state management
+- Support for file uploads
+- Custom field mapping per form
+- Database integration (replace JSON files)
+- Session persistence across requests
+
+================================================================================
+
+TESTING & DEBUGGING:
+================================================================================
+
+Debug Artifacts:
+- debug_prelogin_main.html  → Saved page HTML before login
+- debug_postlogin_main.html → Saved page HTML after login
+- Console logs with emoji indicators:
+  * 📄 Extraction progress
+  * 🤖 Classification progress
+  * ✅ Successful fills
+  * ⚠️ Warnings/retries
+  * ❌ Failures
+
+Testing Strategy:
+1. Unit testing: Test each module independently
+2. Integration testing: Test full workflow with mock forms
+3. Live testing: Test on actual government/institutional sites
+4. User acceptance: Telegram user testing with real data
+
+================================================================================
+END OF WORKFLOW DOCUMENTATION
+================================================================================
