@@ -1,9 +1,0 @@
-{
-  "name": "com.autofill.host",
-  "description": "Native host for dynamic autofill",
-  "path": "C:\\path\\to\\native_host.py",
-  "type": "stdio",
-  "allowed_origins": [
-    "chrome-extension://<EXTENSION_ID>/"
-  ]
-}
