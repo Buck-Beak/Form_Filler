@@ -13,3 +13,10 @@ selenium
 
 # Telegram bot
 python-telegram-bot>=21
+
+# Document processing
+PyMuPDF>=1.23.0  # For PDF processing
+python-docx>=0.8.11  # For Word documents
+pandas>=1.5.0  # For Excel files
+Pillow>=9.0.0  # For image processing
+openpyxl>=3.0.0  # For Excel file support
