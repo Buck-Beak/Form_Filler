@@ -22,5 +22,8 @@
   },
   "everify":{
     "url":"https://eportal.incometax.gov.in/iec/foservices/#/pre-login/eVerifyReturn-bl"
+  },
+  "passport_seva":{
+    "url":"https://portal2.passportindia.gov.in/AppOnlineProject/user/RegistrationBaseAction?request_locale=en"
   }
 }
