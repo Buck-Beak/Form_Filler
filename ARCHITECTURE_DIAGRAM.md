@@ -302,9 +302,9 @@ graph TB
         D5[--disable-features=<br/>IsolateOrigins]
     end
     
-    subgraph "Context Fingerprint"
+subgraph "Context Fingerprint"
         E1[Viewport: 1920x1080]
-        E2[User Agent: Chrome 131]
+    E2[User Agent: Chrome 131]
         E3[Locale: en-US]
         E4[Timezone: Asia/Kolkata]
         E5[HTTP Headers:<br/>Sec-Fetch-*, sec-ch-ua]
