@@ -3,6 +3,7 @@ import time
 import asyncio
 import os
 import tempfile
+import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, CallbackQueryHandler, ContextTypes, filters
 import google.generativeai as genai
@@ -12,6 +13,7 @@ from form_extractor import extract_form_fields
 from field_classifier import classify_fields_with_gemini
 from form_filler import autofill_form
 from document_processor import DocumentProcessor
+from standalone_functions import handle_document
 
 # ── Load forms DB and users DB ──
 with open("forms.json", "r") as f:
@@ -96,169 +98,104 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(help_message)
 
+# sending json to standalone app after extracting fields from document
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle uploaded documents and extract user details"""
+    """Handle uploaded documents, extract user details, and send JSON to standalone app"""
+
+    # Get Telegram user info
     telegram_id = update.message.from_user.id
-    chat_id = update.message.chat_id
-    
-    # Get the document
-    document = update.message.document
-    if not document:
-        await update.message.reply_text("❌ No document received. Please upload a file.")
+    file_message = update.message.document
+
+    if not file_message:
+        await update.message.reply_text("❌ No document received.")
         return
-    
-    # Check file size (limit to 20MB)
-    if document.file_size > 20 * 1024 * 1024:
-        await update.message.reply_text("❌ File too large. Please upload a file smaller than 20MB.")
+
+    # File size check
+    if file_message.file_size > 20 * 1024 * 1024:
+        await update.message.reply_text("❌ File too large. Max allowed is 20MB.")
         return
-    
-    # Get file extension
-    file_name = document.file_name or "document"
+
+    # Determine file extension
+    file_name = file_message.file_name or "document"
     file_extension = os.path.splitext(file_name)[1].lower()
-    
-    # Check if file type is supported
-    supported_extensions = ['.pdf', '.docx', '.doc', '.xlsx', '.xls', '.txt', 
-                           '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']
-    
-    if file_extension not in supported_extensions:
+
+    supported = [
+        ".pdf", ".docx", ".doc", ".xlsx", ".xls", ".txt",
+        ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"
+    ]
+
+    if file_extension not in supported:
         await update.message.reply_text(
-            f"❌ Unsupported file type: {file_extension}\n\n"
-            f"📋 Supported formats:\n"
-            f"• PDF files (.pdf)\n"
-            f"• Word documents (.docx, .doc)\n"
-            f"• Excel files (.xlsx, .xls)\n"
-            f"• Images (.jpg, .png, .gif, .bmp, .webp)\n"
-            f"• Text files (.txt)"
+            f"❌ Unsupported file type `{file_extension}`.\n"
+            f"Supported: PDF, DOCX, XLSX, Images, TXT"
         )
         return
-    
-    # Send processing message
-    processing_msg = await update.message.reply_text(
-        f"📄 Processing document: **{file_name}**\n"
-        f"🔄 Extracting text and analyzing with AI...\n"
-        f"⏳ This may take a few moments..."
+
+    # Notify user
+    status_msg = await update.message.reply_text(
+        f"📄 Processing `{file_name}`...\n"
+        f"⏳ Extracting text and analyzing with AI..."
     )
-    
+
     try:
-        # Download the file
-        file = await context.bot.get_file(document.file_id)
-        
-        # Create temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as temp_file:
-            await file.download_to_drive(temp_file.name)
-            temp_file_path = temp_file.name
-        
+        # Download file to temp path
+        telegram_file = await context.bot.get_file(file_message.file_id)
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as tmp:
+            await telegram_file.download_to_drive(tmp.name)
+            temp_path = tmp.name
+
+        # Process document through your Standalone AI processor
         try:
-            # Process the document
-            result = document_processor.process_document(temp_file_path, file_extension)
-            
+            result = document_processor.process_document(temp_path, file_extension)
+
             if "error" in result:
-                await processing_msg.edit_text(
-                    f"❌ **Error processing document:**\n"
-                    f"{result['error']}\n\n"
-                    f"Please try with a different document or check if the file is readable."
-                )
+                await status_msg.edit_text(f"❌ Error: {result['error']}")
                 return
-            
+
             if not result.get("success"):
-                await processing_msg.edit_text(
-                    "❌ **Failed to extract user details from the document.**\n\n"
-                    "The document might be:\n"
-                    "• Empty or corrupted\n"
-                    "• Not containing readable text\n"
-                    "• In an unsupported format\n\n"
-                    "Please try with a different document."
+                await status_msg.edit_text(
+                    "❌ Could not extract useful data.\n"
+                    "Try with a clearer or different document."
                 )
                 return
-            
-            user_details = result["user_details"]
+
+            extracted_json = result["user_details"]
             extracted_count = result["extracted_fields_count"]
-            
-            # Check if we have enough data to be useful
-            if extracted_count < 3:
-                await processing_msg.edit_text(
-                    f"⚠️ **Limited data extracted**\n\n"
-                    f"Only {extracted_count} fields were found in the document.\n"
-                    f"This might not be enough for form filling.\n\n"
-                    f"📋 **Extracted fields:**\n" +
-                    "\n".join([f"• {k}: {v}" for k, v in user_details.items() if v is not None])
-                )
-                return
-            
-            # Find existing user or create new one
-            existing_user_index = None
-            for i, user in enumerate(users_db):
-                if user.get("telegram_id") == telegram_id:
-                    existing_user_index = i
-                    break
-            
-            if existing_user_index is not None:
-                # Update existing user
-                existing_user = users_db[existing_user_index]
-                updated_fields = []
-                
-                for key, value in user_details.items():
-                    if value is not None and (key not in existing_user or existing_user[key] != value):
-                        existing_user[key] = value
-                        updated_fields.append(key)
-                
-                users_db[existing_user_index] = existing_user
-                
-                if updated_fields:
-                    # Save updated users database
-                    save_users_db()
-                    
-                    await processing_msg.edit_text(
-                        f"✅ **Document processed successfully!**\n\n"
-                        f"📊 **Extracted {extracted_count} fields** from the document\n"
-                        f"🔄 **Updated {len(updated_fields)} fields** in your profile\n\n"
-                        f"📋 **Updated fields:**\n" +
-                        "\n".join([f"• {field}: {user_details[field]}" for field in updated_fields]) +
-                        f"\n\n🎉 Your profile has been updated! You can now use form filling features."
-                    )
-                else:
-                    await processing_msg.edit_text(
-                        f"✅ **Document processed successfully!**\n\n"
-                        f"📊 **Extracted {extracted_count} fields** from the document\n"
-                        f"ℹ️ **No updates needed** - all data already exists in your profile\n\n"
-                        f"📋 **Extracted fields:**\n" +
-                        "\n".join([f"• {k}: {v}" for k, v in user_details.items() if v is not None])
-                    )
-            else:
-                # Create new user
-                new_user = {
-                    "telegram_id": telegram_id,
-                    "username": update.message.from_user.username,
-                    **{k: v for k, v in user_details.items() if v is not None}
-                }
-                
-                users_db.append(new_user)
-                
-                # Save updated users database
-                save_users_db()
-                
-                await processing_msg.edit_text(
-                    f"✅ **Document processed successfully!**\n\n"
-                    f"📊 **Extracted {extracted_count} fields** from the document\n"
-                    f"🆕 **Created new profile** for you\n\n"
-                    f"📋 **Your profile data:**\n" +
-                    "\n".join([f"• {k}: {v}" for k, v in user_details.items() if v is not None]) +
-                    f"\n\n🎉 Profile created! You can now use form filling features."
-                )
-        
+
         finally:
-            # Clean up temporary file
-            try:
-                os.unlink(temp_file_path)
-            except Exception:
-                pass
-    
+            os.unlink(temp_path)
+
+        # =========== 🚀 NEW PART — SEND JSON TO STANDALONE SERVER ===========
+
+        try:
+            payload = {
+                "telegram_id": telegram_id,
+                "file_name": file_name,
+                "extracted_fields": extracted_json,
+                "fields_count": extracted_count
+            }
+
+            send_res = requests.post("http://localhost:5000/user-details", json=payload).json()
+
+            await status_msg.edit_text(
+                f"✅ Document processed!\n\n"
+                f"📤 **Sent extracted JSON to Standalone App**\n"
+                f"🌐 Server Response: `{send_res}`\n\n"
+                f"📋 **Extracted Fields ({extracted_count})**:\n" +
+                "\n".join([f"• {k}: {v}" for k, v in extracted_json.items() if v])
+            )
+
+        except Exception as e:
+            await status_msg.edit_text(
+                f"⚠️ Document processed but failed to send to server.\n"
+                f"Error: {e}"
+            )
+
     except Exception as e:
-        await processing_msg.edit_text(
-            f"❌ **Error processing document:**\n"
-            f"{str(e)}\n\n"
-            f"Please try again or contact support if the problem persists."
-        )
+        await status_msg.edit_text(f"❌ Error processing document:\n{str(e)}")
+
+
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.message.from_user.id
