@@ -11,7 +11,7 @@ function initDB() {
   }
 }
 
-function loadDB() {
+export function loadDB() {
   initDB();
   return JSON.parse(fs.readFileSync(dbPath, "utf8"));
 }
