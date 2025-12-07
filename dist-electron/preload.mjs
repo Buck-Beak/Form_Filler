@@ -1,22 +1,17 @@
 "use strict";
-const electron = require("electron");
-electron.contextBridge.exposeInMainWorld("ipcRenderer", {
-  on(...args) {
-    const [channel, listener] = args;
-    return electron.ipcRenderer.on(channel, (event, ...args2) => listener(event, ...args2));
+const { contextBridge, ipcRenderer } = require("electron");
+contextBridge.exposeInMainWorld("ipcRenderer", {
+  on(channel, listener) {
+    return ipcRenderer.on(channel, (event, ...args) => listener(event, ...args));
   },
-  off(...args) {
-    const [channel, ...omit] = args;
-    return electron.ipcRenderer.off(channel, ...omit);
+  off(channel, listener) {
+    return ipcRenderer.off(channel, listener);
   },
-  send(...args) {
-    const [channel, ...omit] = args;
-    return electron.ipcRenderer.send(channel, ...omit);
+  send(channel, ...args) {
+    return ipcRenderer.send(channel, ...args);
   },
-  invoke(...args) {
-    const [channel, ...omit] = args;
-    return electron.ipcRenderer.invoke(channel, ...omit);
+  invoke(channel, ...args) {
+    return ipcRenderer.invoke(channel, ...args);
   }
-  // You can expose other APTs you need here.
-  // ...
+  // Add more APIs here if needed
 });

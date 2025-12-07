@@ -1,34 +1,78 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/electron-vite.animate.svg'
+import { useState, useEffect } from 'react'
+import Login from './components/Login'
+import AdminDashboard from './components/AdminDashboard'
+import UserDashboard from './components/UserDashboard'
 import './App.css'
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    // Check if user is already logged in
+    const storedUser = localStorage.getItem('user')
+    const storedToken = localStorage.getItem('authToken')
+    
+    if (storedUser && storedToken) {
+      try {
+        const parsedUser = JSON.parse(storedUser)
+        // Ensure role is set correctly (default to 'user' if not admin)
+        const userWithRole = {
+          ...parsedUser,
+          role: parsedUser.role && parsedUser.role.toLowerCase() === 'admin' ? 'admin' : 'user'
+        }
+        setUser(userWithRole)
+        // Update localStorage with correct role
+        localStorage.setItem('user', JSON.stringify(userWithRole))
+      } catch (e) {
+        console.error('Failed to parse stored user', e)
+        localStorage.removeItem('user')
+        localStorage.removeItem('authToken')
+      }
+    }
+    setLoading(false)
+  }, [])
+
+  const handleLogin = (userData) => {
+    // Ensure role is set correctly (default to 'user' if not admin)
+    const userWithRole = {
+      ...userData,
+      role: userData.role && userData.role.toLowerCase() === 'admin' ? 'admin' : 'user'
+    }
+    setUser(userWithRole)
+    // Update localStorage with correct role
+    localStorage.setItem('user', JSON.stringify(userWithRole))
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem('user')
+    localStorage.removeItem('authToken')
+    setUser(null)
+  }
+
+  if (loading) {
+    return (
+      <div className="loading-screen">
+        <div className="spinner"></div>
+        <p>Loading...</p>
+      </div>
+    )
+  }
 
   return (
-    <>
-      <div>
-        <a href="https://electron-vite.github.io" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
+    <div className="app">
+      {user ? (
+        // Check if user is admin - only admins can see Admin Dashboard
+        // Use strict check: role must be exactly 'admin' (case-sensitive)
+        user.role && user.role.toLowerCase() === 'admin' ? (
+          <AdminDashboard user={user} onLogout={handleLogout} />
+        ) : (
+          <UserDashboard user={user} onLogout={handleLogout} />
+        )
+      ) : (
+        <Login onLogin={handleLogin} />
+      )}
+    </div>
   )
 }
 
