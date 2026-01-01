@@ -20,7 +20,7 @@ function saveDB(data) {
   fs.writeFileSync(dbPath, JSON.stringify(data, null, 2));
 }
 
-export function saveUser(receivedJSON) {
+/*export function saveUser(receivedJSON) {
   const db = loadDB();
   const telegramId = receivedJSON.telegram_id;
 
@@ -32,4 +32,39 @@ export function saveUser(receivedJSON) {
   }
   saveDB(db);
   return receivedJSON;
+}*/
+
+
+export function saveUser(receivedJSON) {
+  const db = loadDB();
+  const telegramId = receivedJSON.telegram_id;
+
+  if (!telegramId) return null;
+
+  const index = db.findIndex(u => u.telegram_id === telegramId);
+
+  // ❌ Do NOT create new user
+  if (index === -1) {
+    console.warn("User not found, skipping update:", telegramId);
+    return null;
+  }
+
+  const incomingFields = receivedJSON.extracted_fields || {};
+  const existingFields = db[index].extracted_fields || {};
+
+  // ✅ Patch only valid fields
+  Object.entries(incomingFields).forEach(([key, value]) => {
+    if (value !== null && value !== undefined && value !== "") {
+      existingFields[key] = value;
+    }
+  });
+
+  // Assign back
+  db[index].extracted_fields = existingFields;
+
+  // Update count
+  db[index].fields_count = Object.keys(existingFields).length;
+
+  saveDB(db);
+  return db[index];
 }

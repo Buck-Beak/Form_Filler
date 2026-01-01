@@ -1,4 +1,4 @@
-const API_BASE_URL = "http://localhost:5000";
+/*const API_BASE_URL = "http://localhost:8000";
 
 // Helper function to handle fetch errors
 async function fetchWithErrorHandling(url, options) {
@@ -75,4 +75,4 @@ export const api = {
     });
   },
 };
-
+*/

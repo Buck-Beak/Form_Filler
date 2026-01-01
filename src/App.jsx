@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import Login from './components/Login'
-import AdminDashboard from './components/AdminDashboard'
+//import AdminDashboard from './components/AdminDashboard'
 import UserDashboard from './components/UserDashboard'
 import './App.css'
 
@@ -9,40 +9,49 @@ function App() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Check if user is already logged in
-    const storedUser = localStorage.getItem('user')
-    const storedToken = localStorage.getItem('authToken')
-    
-    if (storedUser && storedToken) {
-      try {
-        const parsedUser = JSON.parse(storedUser)
-        // Ensure role is set correctly (default to 'user' if not admin)
-        const userWithRole = {
-          ...parsedUser,
-          role: parsedUser.role && parsedUser.role.toLowerCase() === 'admin' ? 'admin' : 'user'
-        }
-        setUser(userWithRole)
-        // Update localStorage with correct role
-        localStorage.setItem('user', JSON.stringify(userWithRole))
-      } catch (e) {
-        console.error('Failed to parse stored user', e)
-        localStorage.removeItem('user')
-        localStorage.removeItem('authToken')
-      }
-    }
-    setLoading(false)
-  }, [])
+  const storedUser = localStorage.getItem("user");
+  const storedToken = localStorage.getItem("authToken");
 
-  const handleLogin = (userData) => {
-    // Ensure role is set correctly (default to 'user' if not admin)
-    const userWithRole = {
-      ...userData,
-      role: userData.role && userData.role.toLowerCase() === 'admin' ? 'admin' : 'user'
+  if (storedUser && storedToken) {
+    try {
+      const parsedUser = JSON.parse(storedUser);
+
+      setUser({
+        telegram_id: parsedUser.telegram_id,
+        name: parsedUser.name || "",
+        email: parsedUser.email || "",
+        role:
+          parsedUser.role &&
+          parsedUser.role.toLowerCase() === "admin"
+            ? "admin"
+            : "user"
+      });
+    } catch (err) {
+      console.error("Invalid stored user", err);
+      localStorage.clear();
     }
-    setUser(userWithRole)
-    // Update localStorage with correct role
-    localStorage.setItem('user', JSON.stringify(userWithRole))
   }
+
+  setLoading(false);
+}, []);
+
+
+  const handleLogin = (response) => {
+    const { user, token } = response;
+
+    const userWithRole = {
+      telegram_id: user.telegram_id,
+      name: user.name || "",
+      email: user.email || "",
+      role: user.role ? user.role.toLowerCase() : "user" // default to 'user'
+    };
+
+    setUser(userWithRole);
+
+    localStorage.setItem("user", JSON.stringify(userWithRole));
+    localStorage.setItem("authToken", token);
+  };
+
 
   const handleLogout = () => {
     localStorage.removeItem('user')

@@ -1,17 +1,17 @@
 import { useState } from "react";
-import { api } from "../api";
 import "./Login.css";
 
-function Login({ onLogin }) {
+function Login() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [formData, setFormData] = useState({
-    telegramId: "",
+    telegram_id: "",
     password: "",
     name: "",
     email: "",
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const baseURL = "http://localhost:3000";
 
   const handleChange = (e) => {
     setFormData({
@@ -22,30 +22,53 @@ function Login({ onLogin }) {
   };
 
   const handleSubmit = async (e) => {
+    console.log(formData);
     e.preventDefault();
     setError("");
     setLoading(true);
-
     try {
-      const result = await api.login(
-        formData.telegramId,
-        formData.password,
-        formData.name,
-        formData.email
-      );
 
-      // Store auth info
-      localStorage.setItem("authToken", result.token);
-      localStorage.setItem("user", JSON.stringify(result.user));
-      
-      onLogin(result.user);
+      const endpoint = isRegistering
+      ? "/api/user/register"
+      : "/api/user/login";
+
+    const payload = isRegistering
+      ? {
+          telegram_id: formData.telegram_id,
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+        }
+      : {
+          telegram_id: formData.telegram_id,
+          password: formData.password,
+        };
+      const res = await fetch(`${baseURL}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const text = await res.text();
+    console.log("Raw response:", text);
+
+    let data;
+    try {
+      data = text ? JSON.parse(text) : {};
     } catch (err) {
-      setError(err.message || "Authentication failed");
-    } finally {
+      throw new Error("Invalid JSON response from server");
+    }
+
+    console.log("Parsed response:", data);
+
+    if (!res.ok) {
+      throw new Error(data.error || "Server error");
+    }
+   } catch (error) {
+      setError(error.message);
+    }finally {
       setLoading(false);
     }
   };
-
   return (
     <div className="login-container">
       <div className="login-card">
@@ -64,8 +87,8 @@ function Login({ onLogin }) {
             <input
               type="text"
               id="telegramId"
-              name="telegramId"
-              value={formData.telegramId}
+              name="telegram_id"
+              value={formData.telegram_id}
               onChange={handleChange}
               required
               placeholder="Enter your Telegram ID"
@@ -127,7 +150,7 @@ function Login({ onLogin }) {
               onClick={() => {
                 setIsRegistering(!isRegistering);
                 setError("");
-                setFormData({ telegramId: "", password: "", name: "", email: "" });
+                setFormData({ telegram_id: "", password: "", name: "", email: "" });
               }}
             >
               {isRegistering ? "Login" : "Register"}
