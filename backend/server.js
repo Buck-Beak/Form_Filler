@@ -6,6 +6,8 @@ import mongoose from "mongoose";
 import cors from "cors";
 
 import userRoute from "./Routes/userRoute.js";
+import verificationRoute from "./Routes/verificationRoute.js";
+import { initializeBot } from "./Services/telegramBot.js";
 
 const app = express();
 
@@ -15,7 +17,11 @@ app.use(cors({
   credentials: true
 }));
 
+// Initialize Telegram bot
+initializeBot(process.env.TELEGRAM_BOT_TOKEN);
+
 app.use("/api/user", userRoute);
+app.use("/api/verification", verificationRoute);
 
 const PORT = process.env.PORT || 3000;
 

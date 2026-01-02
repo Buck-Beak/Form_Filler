@@ -21,6 +21,7 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.1.1",
     "multer": "^2.0.2",
+    "node-telegram-bot-api": "^0.67.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^7.11.0"
