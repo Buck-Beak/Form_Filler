@@ -24,3 +24,10 @@ dist-ssr
 *.sw?
 
 backend/.env
+# Electron build outputs
+release/
+out/
+build/
+win-unpacked/
+*.exe
+

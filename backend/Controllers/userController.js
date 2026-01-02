@@ -40,10 +40,11 @@ export const loginUser = async (req, res) => {
   }
 };
 
-// GET /api/user/:userId
+// GET /api/user/:telegram_id
 export const getUserById = async (req, res) => {
   try {
-    const user = await User.findById(req.params.userId).select("name");
+    const { userId } = req.params; // This is the telegram_id from the route
+    const user = await User.findOne({ telegram_id: userId }).select("-password"); // Exclude password
     if (!user) return res.status(404).json({ error: "User not found" });
     res.json(user);
   } catch (err) {

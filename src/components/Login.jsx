@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import "./Login.css";
 
-function Login() {
+function Login({ onLogin,user }) {
+  const navigate = useNavigate();
   const [isRegistering, setIsRegistering] = useState(false);
   const [formData, setFormData] = useState({
     telegram_id: "",
@@ -58,12 +60,38 @@ function Login() {
       throw new Error("Invalid JSON response from server");
     }
 
-    console.log("Parsed response:", data);
+    console.log("Parsed responses:", data);
+    console.log("isRegistering:", isRegistering);
 
     if (!res.ok) {
+      console.log("Response not OK, status:", res.status);
       throw new Error(data.error || "Server error");
     }
+    
+    console.log("Response OK, proceeding...");
+    
+    if (!isRegistering) {
+        // Login → call parent and navigate
+        console.log("Login successful:", data);
+        const loggedInUser = {
+          telegram_id: data.telegram_id,
+          name: data.name || "",
+          email: data.email || "",
+          role: "user",
+        };
+        console.log("Calling onLogin with:", loggedInUser);
+        onLogin({ user: loggedInUser, token: data.token });
+        console.log("Navigating to /user-dashboard");
+        navigate("/user-dashboard");
+      } else {
+        // Registration → switch to login
+        alert("Registration successful! Please login.");
+        setIsRegistering(false);
+        setFormData({ telegram_id: "", password: "", name: "", email: "" });
+        navigate("/login");
+      }
    } catch (error) {
+      console.error("🔥 ERROR OCCURRED:", error);
       setError(error.message);
     }finally {
       setLoading(false);

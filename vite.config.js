@@ -5,6 +5,9 @@ import react from '@vitejs/plugin-react'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  server: {
+    open: false, // Disable auto-opening browser (Electron will open its own window)
+  },
   plugins: [
     react(),
     electron({
