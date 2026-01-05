@@ -4,6 +4,7 @@ import asyncio
 import os
 import tempfile
 import requests
+import aiohttp  # async HTTP client
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, CallbackQueryHandler, ContextTypes, filters
 import google.generativeai as genai
@@ -13,7 +14,6 @@ from form_extractor import extract_form_fields
 from field_classifier import classify_fields_with_gemini
 from form_filler import autofill_form
 from document_processor import DocumentProcessor
-from standalone_functions import handle_document
 
 # ── Load forms DB and users DB ──
 with open("forms.json", "r") as f:
@@ -214,7 +214,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "url": url,
         "form_key": form_key,
         "user_data": user_data,
-        "chat_id": chat_id
+        "chat_id": chat_id,
+        "telegram_id": telegram_id
     }
     keyboard = [
         [InlineKeyboardButton("🚀 Open & Auto-Fill Form", callback_data=f"fill_{request_id}")]
@@ -239,7 +240,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     request = pending_requests[request_id]
     url = request["url"]
-    user_data = request["user_data"]
+    # user_data = request["user_data"]
+
+    # fetch data from electron app
+    async with aiohttp.ClientSession() as session:
+        async with session.get(f"http://localhost:5000/user/{request['telegram_id']}") as resp:
+            if resp.status == 200:
+                user_data = await resp.json()
+                print("\n📥 RECEIVED FROM ELECTRON APP:", user_data)
+
+            else:
+                await context.bot.send_message(
+                    chat_id=request["chat_id"],
+                    text="❌ Could not load your saved data from the standalone app."
+                )
+                return
+
     form_key = request["form_key"]
     await query.edit_message_text(
         f"🔄 Opening browser for: **{form_key}**\n"
@@ -257,7 +273,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"\n📄 INITIAL: Extracted {len(fields)} fields")
         classified = classify_fields_with_gemini(fields, gemini_model)
         print(f"\n🤖 Classified {len(classified)} fields")
-        filled_count = await autofill_form(page, classified, user_data)
+        filled_count = await autofill_form(page, classified, user_data['extracted_fields'])
         await context.bot.send_message(
             chat_id=request["chat_id"],
             text=f"✅ Form auto-filled!\n"
