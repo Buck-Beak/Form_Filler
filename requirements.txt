@@ -14,6 +14,12 @@ selenium
 # Telegram bot
 python-telegram-bot>=21
 
+# Async HTTP client
+aiohttp>=3.8.0
+
+# HTML parsing
+beautifulsoup4>=4.11.0
+
 # Document processing
 PyMuPDF>=1.23.0  # For PDF processing
 python-docx>=0.8.11  # For Word documents

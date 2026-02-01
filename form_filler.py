@@ -1,4 +1,5 @@
 import asyncio
+from visual_feedback import VisualFeedback
 
 KEY_MAP = {
     "date_of_birth": "dob",
@@ -12,6 +13,11 @@ KEY_MAP = {
 
 async def autofill_form(page, classified_fields, user_data):
     filled_count = 0
+    
+    # Initialize visual feedback
+    visual = VisualFeedback(page)
+    await visual.inject_visual_styles()
+    
     for mapping in classified_fields:
         field_id = mapping.get("id")
         field_name = mapping.get("name")
@@ -51,6 +57,14 @@ async def autofill_form(page, classified_fields, user_data):
                     continue
                 if not await element.is_visible():
                     continue
+                
+                # Show visual feedback
+                try:
+                    await visual.show_filling_field(category, str(value))
+                    await visual.highlight_element(selector, "clicking")
+                except:
+                    pass  # Don't fail filling if visual feedback fails
+                
                 await element.click()
                 await asyncio.sleep(0.1)
                 try:
@@ -67,4 +81,6 @@ async def autofill_form(page, classified_fields, user_data):
                 print(f"⚠️ Try selector failed for '{category}' via {selector}: {e}")
         if not filled_this:
             print(f"❌ Could not fill '{category}' (mapped '{data_key}') — no selector matched")
+    
+    print(f"\n🎉 Total fields filled: {filled_count}/{len(classified_fields)}")
     return filled_count

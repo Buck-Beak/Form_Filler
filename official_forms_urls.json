@@ -1,0 +1,52 @@
+{
+  "jee_nta": {
+    "url": "https://www.nta.ac.in/",
+    "keywords": ["jee", "nta", "main", "advanced"],
+    "description": "NTA JEE Main & Advanced official portal"
+  },
+  "neet_nta": {
+    "url": "https://www.nta.ac.in/",
+    "keywords": ["neet", "medical", "entrance"],
+    "description": "NTA NEET official portal"
+  },
+  "upsc_portal": {
+    "url": "https://www.upsconline.nic.in/",
+    "keywords": ["upsc", "civil", "services", "ias"],
+    "description": "UPSC Civil Services Examination portal"
+  },
+  "ssc_portal": {
+    "url": "https://ssc.nic.in/",
+    "keywords": ["ssc", "staff", "selection"],
+    "description": "SSC Official portal"
+  },
+  "aadhaar_portal": {
+    "url": "https://uidai.gov.in/",
+    "keywords": ["aadhaar", "uid", "identity"],
+    "description": "AADHAAR Official portal"
+  },
+  "pf_portal": {
+    "url": "https://www.epfindia.gov.in/",
+    "keywords": ["provident", "fund", "pf", "epfo"],
+    "description": "EPFO Provident Fund portal"
+  },
+  "pan_portal": {
+    "url": "https://www.incometax.gov.in/iec/fmu/pan_help",
+    "keywords": ["pan", "permanent", "account"],
+    "description": "PAN Application portal"
+  },
+  "dsssb_portal": {
+    "url": "https://dsssb.delhi.gov.in/",
+    "keywords": ["dsssb", "delhi", "recruitment"],
+    "description": "DSSSB Recruitment portal"
+  },
+  "railway_portal": {
+    "url": "https://www.indianrailways.gov.in/",
+    "keywords": ["railway", "rrb", "recruitment"],
+    "description": "Indian Railways portal"
+  },
+  "bank_portal": {
+    "url": "https://www.ibps.in/",
+    "keywords": ["ibps", "bank", "sbi", "recruitment"],
+    "description": "IBPS Bank Recruitment portal"
+  }
+}

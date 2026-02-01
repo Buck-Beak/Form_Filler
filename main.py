@@ -5,6 +5,7 @@ import os
 import tempfile
 import requests
 import aiohttp  # async HTTP client
+from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, CallbackQueryHandler, ContextTypes, filters
 import google.generativeai as genai
@@ -14,12 +15,16 @@ from form_extractor import extract_form_fields
 from field_classifier import classify_fields_with_gemini
 from form_filler import autofill_form
 from document_processor import DocumentProcessor
+from navigation_agent import NavigationAgent, NavigationBlockedError
+from dynamic_url_extractor import find_best_url
 
 # ── Load forms DB and users DB ──
 with open("forms.json", "r") as f:
     forms = json.load(f)
 with open("users.json", "r") as f:
     users_db = json.load(f)
+with open("official_forms_urls.json", "r") as f:
+    official_urls = json.load(f)
 
 pending_requests = {}
 
@@ -97,6 +102,44 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔒 **Privacy:** Your data is processed securely and stored locally."
     )
     await update.message.reply_text(help_message)
+
+async def myid_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show user's Telegram ID and registration status"""
+    telegram_id = update.message.from_user.id
+    username = update.message.from_user.username or "N/A"
+    first_name = update.message.from_user.first_name or ""
+    
+    user_data = next((u for u in users_db if u["telegram_id"] == telegram_id), None)
+    
+    if user_data:
+        status_msg = (
+            f"✅ **You are registered!**\n\n"
+            f"👤 Name: {user_data.get('name', 'N/A')}\n"
+            f"🆔 Telegram ID: `{telegram_id}`\n"
+            f"📧 Email: {user_data.get('email', 'N/A')}\n"
+            f"📱 Mobile: {user_data.get('mobile', 'N/A')}"
+        )
+    else:
+        status_msg = (
+            f"❌ **You are NOT registered yet!**\n\n"
+            f"🆔 Your Telegram ID: `{telegram_id}`\n"
+            f"👤 Telegram Name: {first_name}\n"
+            f"🔤 Username: @{username}\n\n"
+            f"📝 To register:\n"
+            f"1. Upload a document with your details OR\n"
+            f"2. Ask admin to add this ID to users.json:\n\n"
+            f"```json\n"
+            f'{{\n'
+            f'  "telegram_id": {telegram_id},\n'
+            f'  "name": "{first_name}",\n'
+            f'  "email": "your@email.com",\n'
+            f'  "mobile": "1234567890",\n'
+            f'  "dob": "2000-01-01"\n'
+            f'}}\n'
+            f"```"
+        )
+    
+    await update.message.reply_text(status_msg)
 
 # sending json to standalone app after extracting fields from document
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -201,14 +244,34 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.message.from_user.id
     user_text = update.message.text
     chat_id = update.message.chat_id
+    
+    # First try static lookup
     url, form_key = get_form_url(user_text)
+    
+    # If not found, use dynamic AI-powered extractor
     if not url:
-        await update.message.reply_text("❌ Form not found in my database.")
-        return
+        await update.message.reply_text("🔍 Searching for the best matching form using AI...")
+        url, form_key, reason = await find_best_url(user_text, forms, gemini_model, official_urls)
+        
+        if not url:
+            await update.message.reply_text(
+                f"❌ Could not find a matching form.\n"
+                f"Reason: {reason}\n\n"
+                f"Try asking for one of these:\n" +
+                "\n".join([f"• {k}" for k in forms.keys()])
+            )
+            return
+        
+        await update.message.reply_text(
+            f"✅ Found matching form: **{form_key}**\n"
+            f"Reason: {reason}"
+        )
+    
     user_data = next((u for u in users_db if u["telegram_id"] == telegram_id), None)
     if not user_data:
-        await update.message.reply_text("❌ Your user data is not in the database.")
+        await update.message.reply_text("❌ Your user data is not in the database.\nUse /myid to register.")
         return
+    
     request_id = f"{telegram_id}_{int(time.time())}"
     pending_requests[request_id] = {
         "url": url,
@@ -240,46 +303,328 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     request = pending_requests[request_id]
     url = request["url"]
-    # user_data = request["user_data"]
+    form_key = request["form_key"]
 
-    # fetch data from electron app
-    async with aiohttp.ClientSession() as session:
-        async with session.get(f"http://localhost:5000/user/{request['telegram_id']}") as resp:
-            if resp.status == 200:
-                user_data = await resp.json()
-                print("\n📥 RECEIVED FROM ELECTRON APP:", user_data)
-
-            else:
-                await context.bot.send_message(
-                    chat_id=request["chat_id"],
-                    text="❌ Could not load your saved data from the standalone app."
-                )
-                return
+    # Try to fetch data from standalone app, fallback to users.json
+    user_data = None
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"http://localhost:5000/user/{request['telegram_id']}", timeout=aiohttp.ClientTimeout(total=3)) as resp:
+                if resp.status == 200:
+                    user_data = await resp.json()
+                    print("\n📥 RECEIVED FROM ELECTRON APP:", user_data)
+    except Exception as e:
+        print(f"⚠️ Standalone app not reachable: {e}")
+        print("📂 Falling back to users.json")
+    
+    # Fallback to users.json if server is unavailable
+    if not user_data:
+        user_data = next((u for u in users_db if u["telegram_id"] == request["telegram_id"]), None)
+        if not user_data:
+            await context.bot.send_message(
+                chat_id=request["chat_id"],
+                text="❌ Your user data is not in the database. Use /myid to check your registration status."
+            )
+            return
+        # Wrap in expected format if coming from users.json
+        if "extracted_fields" not in user_data:
+            user_data = {"extracted_fields": user_data}
 
     form_key = request["form_key"]
     await query.edit_message_text(
         f"🔄 Opening browser for: **{form_key}**\n"
-        f"Please wait..."
+        f"🧭 Navigating to form page...\n"
+        f"(This may take 1-2 minutes as the AI navigates the website)"
     )
     try:
         p, browser, browser_context, page = await launch_browser()
-        await page.goto(url, wait_until="domcontentloaded", timeout=60000)
-        await asyncio.sleep(5)
+        agent = NavigationAgent(page, gemini_model)
+
+        # Use the navigation agent to reach the actual form page
+        try:
+            print(f"\n[Bot] Starting navigation to find form for: {form_key}")
+            found, final_url, reason = await agent.maps_to_form(url, form_key, max_attempts=5)
+        except NavigationBlockedError as nav_err:
+            await context.bot.send_message(
+                chat_id=request["chat_id"],
+                text=(
+                    "🚫 Website Access Blocked\n\n"
+                    f"Reason: {nav_err}\n\n"
+                    "Why this happens:\n"
+                    "• Website detects automated access (anti-bot measures)\n"
+                    "• CAPTCHA verification required\n"
+                    "• IP address temporarily blocked\n\n"
+                    "How to fix:\n"
+                    "1. Visit the website manually in your browser\n"
+                    "2. Complete any CAPTCHA verification\n"
+                    "3. Try again in 5-10 minutes\n"
+                    "4. Or try a different form"
+                )
+            )
+            try:
+                await browser.close()
+            except Exception:
+                pass
+            try:
+                await p.stop()
+            except Exception:
+                pass
+            del pending_requests[request_id]
+            return
+        except Exception as e:
+            # Catch network errors like ERR_ABORTED
+            error_msg = str(e)
+            if "ERR_ABORTED" in error_msg or "net::" in error_msg:
+                await context.bot.send_message(
+                    chat_id=request["chat_id"],
+                    text=(
+                        "🚫 Network Error / Website Blocked Access\n\n"
+                        "The website detected automation and refused connection.\n\n"
+                        "This happens with:\n"
+                        "• Government sites (UPSC, SSC, Bank portals)\n"
+                        "• Sites with strict anti-bot protection\n\n"
+                        "Solutions:\n"
+                        "1. Try accessing manually in your browser\n"
+                        "2. Use a VPN or different network\n"
+                        "3. Wait a few minutes and try again\n"
+                        "4. Some sites may not support automation"
+                    )
+                )
+            else:
+                await context.bot.send_message(
+                    chat_id=request["chat_id"],
+                    text=f"❌ Error: {error_msg[:100]}"
+                )
+            try:
+                await browser.close()
+            except Exception:
+                pass
+            try:
+                await p.stop()
+            except Exception:
+                pass
+            del pending_requests[request_id]
+            return
+
+        if not found:
+            # Better error messages based on the reason
+            if "login" in reason.lower():
+                await context.bot.send_message(
+                    chat_id=request["chat_id"],
+                    text=(
+                        "🔐 Login Required\n\n"
+                        f"📍 Current Page: {final_url}\n\n"
+                        "The form requires you to login first.\n\n"
+                        "What to do:\n"
+                        "1. The browser window is open at the login page\n"
+                        "2. Please login with your credentials\n"
+                        "3. After logging in, navigate to the form\n"
+                        "4. I'll try to detect and fill the form automatically\n"
+                        "5. Or close the browser if you prefer to fill manually\n\n"
+                        "⏱️ Browser will stay open for 3 minutes"
+                    )
+                )
+                # Wait longer for user to login
+                try:
+                    await asyncio.wait_for(page.wait_for_event("close"), timeout=180)
+                except asyncio.TimeoutError:
+                    print("[Bot] Login timeout, closing browser")
+            elif "loop" in reason.lower():
+                await context.bot.send_message(
+                    chat_id=request["chat_id"],
+                    text=(
+                        "🔄 Navigation Loop Detected\n\n"
+                        f"📍 Current Page: {final_url}\n\n"
+                        "The bot got stuck in a navigation loop.\n\n"
+                        "This happens when:\n"
+                        "• The website has complex navigation\n"
+                        "• Multiple pages look similar\n"
+                        "• The form requires specific steps\n\n"
+                        "Solutions:\n"
+                        "1. Try a more specific form request\n"
+                        "2. Check if the form URL is correct\n"
+                        "3. Navigate manually in the open browser\n\n"
+                        "⏱️ Browser will stay open for 2 minutes"
+                    )
+                )
+                try:
+                    await asyncio.wait_for(page.wait_for_event("close"), timeout=120)
+                except asyncio.TimeoutError:
+                    pass
+            elif "blocked" in reason.lower() or "captcha" in reason.lower():
+                await context.bot.send_message(
+                    chat_id=request["chat_id"],
+                    text=(
+                        "🚫 Access Blocked / CAPTCHA Required\n\n"
+                        f"📍 Current Page: {final_url}\n\n"
+                        "The website is blocking automated access.\n\n"
+                        "Common reasons:\n"
+                        "• Anti-bot protection detected automation\n"
+                        "• CAPTCHA verification required\n"
+                        "• IP rate limiting\n\n"
+                        "What to do:\n"
+                        "1. Complete CAPTCHA in the browser window\n"
+                        "2. Try again in a few minutes\n"
+                        "3. Use a VPN if available\n"
+                        "4. Some government sites don't allow automation\n\n"
+                        "⏱️ Browser will stay open for 2 minutes"
+                    )
+                )
+                try:
+                    await asyncio.wait_for(page.wait_for_event("close"), timeout=120)
+                except asyncio.TimeoutError:
+                    pass
+            elif "no navigable" in reason.lower() or "no links" in reason.lower():
+                await context.bot.send_message(
+                    chat_id=request["chat_id"],
+                    text=(
+                        "🤷 Cannot Find Navigation Path\n\n"
+                        f"📍 Current Page: {final_url}\n\n"
+                        "The page doesn't have clear navigation to the form.\n\n"
+                        "Possible causes:\n"
+                        "• This might already be the form page (check browser)\n"
+                        "• The form requires JavaScript/cookies enabled\n"
+                        "• The website structure is unusual\n\n"
+                        "What to do:\n"
+                        "1. Check the open browser - you might already be at the form\n"
+                        "2. Try clicking visible buttons/links manually\n"
+                        "3. If you find the form, I'll try to detect and fill it\n\n"
+                        "⏱️ Browser will stay open for 2 minutes"
+                    )
+                )
+                try:
+                    await asyncio.wait_for(page.wait_for_event("close"), timeout=120)
+                except asyncio.TimeoutError:
+                    pass
+            else:
+                # Generic failure message
+                await context.bot.send_message(
+                    chat_id=request["chat_id"],
+                    text=(
+                        "⚠️ Could Not Reach Form Automatically\n\n"
+                        f"📍 Current Page: {final_url}\n"
+                        f"🔍 Reason: {reason}\n\n"
+                        "The AI couldn't automatically navigate to the form.\n\n"
+                        "What you can do:\n"
+                        "1. Browser window is open - try navigating manually\n"
+                        "2. Look for buttons like 'Apply', 'Register', 'New Form'\n"
+                        "3. Once you reach the form, I may auto-detect it\n"
+                        "4. Close browser when done\n\n"
+                        "⏱️ Browser will stay open for 2 minutes"
+                    )
+                )
+                try:
+                    await asyncio.wait_for(page.wait_for_event("close"), timeout=120)
+                except asyncio.TimeoutError:
+                    pass
+            
+            # Cleanup
+            try:
+                await browser.close()
+            except Exception:
+                pass
+            try:
+                await p.stop()
+            except Exception:
+                pass
+            del pending_requests[request_id]
+            return
+
+        await context.bot.send_message(
+            chat_id=request["chat_id"],
+            text=(
+                "✅ Successfully Reached Form Page!\n"
+                f"📍 URL: {final_url}\n"
+                f"🎯 Navigation: {reason}\n\n"
+                "🔍 Extracting form fields..."
+            ),
+        )
+
+        # We are on the form page; extract and fill
+        await asyncio.sleep(2)
+        fields = []
         for attempt in range(10):
             fields = await extract_form_fields(page)
             if fields:
                 break
             await asyncio.sleep(1)
-        print(f"\n📄 INITIAL: Extracted {len(fields)} fields")
+        
+        print(f"\n📄 INITIAL: Extracted {len(fields)} fields at {page.url}")
+        
+        if not fields:
+            await context.bot.send_message(
+                chat_id=request["chat_id"],
+                text=(
+                    "⚠️ No form fields found on this page.\n\n"
+                    "Possible reasons:\n"
+                    "• The page is still loading\n"
+                    "• The form requires interaction first\n"
+                    "• This might not be a form page\n\n"
+                    "The browser is open - try navigating to the form manually.\n"
+                    "⏱️ Browser will stay open for 2 minutes."
+                )
+            )
+            try:
+                await asyncio.wait_for(page.wait_for_event("close"), timeout=120)
+            except asyncio.TimeoutError:
+                pass
+            
+            # Update session with failure
+            if hasattr(agent, 'current_session_steps'):
+                agent.current_session_steps.append({
+                    "url": final_url,
+                    "action": "form_extraction_failed",
+                    "details": "No fields found",
+                    "timestamp": datetime.now().isoformat()
+                })
+                await agent._save_failed_session(url, form_key, "No form fields detected")
+            
+            try:
+                await browser.close()
+            except Exception:
+                pass
+            try:
+                await p.stop()
+            except Exception:
+                pass
+            del pending_requests[request_id]
+            return
+        
         classified = classify_fields_with_gemini(fields, gemini_model)
         print(f"\n🤖 Classified {len(classified)} fields")
+        
+        # Show visual feedback during filling
+        await agent.visual.show_form_found()
+        
         filled_count = await autofill_form(page, classified, user_data['extracted_fields'])
+        
+        # Update session with success
+        if hasattr(agent, 'current_session_steps'):
+            agent.current_session_steps.append({
+                "url": final_url,
+                "action": "form_filled",
+                "details": f"Filled {filled_count} fields",
+                "timestamp": datetime.now().isoformat()
+            })
+            # Save successful session
+            await agent._save_successful_session(url, form_key, final_url)
+            # Update with field count
+            if hasattr(agent.session_storage, 'sessions') and agent.session_storage.sessions:
+                last_session = agent.session_storage.sessions[-1]
+                last_session['form_filled'] = True
+                last_session['fields_filled_count'] = filled_count
+                agent.session_storage._save_sessions()
+        
         await context.bot.send_message(
             chat_id=request["chat_id"],
-            text=f"✅ Form auto-filled!\n"
-                 f"📊 Filled {filled_count} fields.\n\n"
-                 f"👀 Please review the form in the browser and submit manually.\n"
-                 f"The browser will stay open for up to 5 minutes, or closes sooner if you exit the window."
+            text=f"✅ Form Auto-Filled Successfully!\n"
+                 f"📊 Filled {filled_count} out of {len(classified)} fields.\n\n"
+                 f"👀 Please review the form carefully:\n"
+                 f"• Check all filled values are correct\n"
+                 f"• Fill any remaining fields manually\n"
+                 f"• Click Submit when ready\n\n"
+                 f"📌 The bot has learned this navigation path for next time!\n\n"
+                 f"⏱️ Browser will stay open for 5 minutes."
         )
         # Do not block for a fixed sleep; wait until the user closes the page or timeout
         await wait_until_page_closed(page, timeout=300)
@@ -300,13 +645,28 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     del pending_requests[request_id]
 
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle errors and gracefully exit on conflict."""
+    print(f"Update {update} caused error {context.error}")
+    
+    # Check if it's a conflict error (multiple instances running)
+    if "Conflict" in str(context.error) or "terminated by other getUpdates" in str(context.error):
+        print("\n❌ CONFLICT ERROR: Another bot instance is already running!")
+        print("📍 Make sure only ONE instance of main.py is running.")
+        print("🛑 Shutting down this instance...\n")
+        await context.application.stop()
+
 if __name__ == "__main__":
     # Enable concurrent handling of updates so a long-running fill does not block new messages
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).concurrent_updates(True).build()
     
+    # Add error handler
+    app.add_error_handler(error_handler)
+    
     # Add command handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("myid", myid_command))
     
     # Add message handlers
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
@@ -318,4 +678,9 @@ if __name__ == "__main__":
     print("🤖 Playwright Bot with Document Processing is running...")
     print("📱 Open Telegram and send a message to your bot!")
     print("📄 Upload documents to extract user details!")
-    app.run_polling()
+    try:
+        app.run_polling()
+    except KeyboardInterrupt:
+        print("\n🛑 Bot stopped by user.")
+    except Exception as e:
+        print(f"\n❌ Fatal error: {e}")

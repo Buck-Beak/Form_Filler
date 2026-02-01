@@ -1,0 +1,212 @@
+[
+  {
+    "start_url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/eVerifyReturn-bl",
+    "user_intent": "everify",
+    "final_url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/register",
+    "success": true,
+    "form_found": true,
+    "form_filled": false,
+    "fields_filled_count": 0,
+    "steps_taken": [
+      {
+        "url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/eVerifyReturn-bl",
+        "action": "navigate",
+        "details": "Initial page load",
+        "timestamp": "2026-02-01T19:37:48.299074",
+        "is_login_page": false
+      },
+      {
+        "url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/register",
+        "action": "spa_click",
+        "details": "Register",
+        "timestamp": "2026-02-01T19:37:56.055573",
+        "is_login_page": false
+      },
+      {
+        "url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/register",
+        "action": "form_filled",
+        "details": "Filled 1 fields",
+        "timestamp": "2026-02-01T19:38:03.677556"
+      }
+    ],
+    "duration_seconds": 10.675155,
+    "error": null,
+    "timestamp": "2026-02-01T19:37:56.055725",
+    "session_id": "everify_1769954876"
+  },
+  {
+    "start_url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/eVerifyReturn-bl",
+    "user_intent": "everify",
+    "final_url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/register",
+    "success": true,
+    "form_found": true,
+    "form_filled": true,
+    "fields_filled_count": 1,
+    "steps_taken": [
+      {
+        "url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/eVerifyReturn-bl",
+        "action": "navigate",
+        "details": "Initial page load",
+        "timestamp": "2026-02-01T19:37:48.299074",
+        "is_login_page": false
+      },
+      {
+        "url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/register",
+        "action": "spa_click",
+        "details": "Register",
+        "timestamp": "2026-02-01T19:37:56.055573",
+        "is_login_page": false
+      },
+      {
+        "url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/register",
+        "action": "form_filled",
+        "details": "Filled 1 fields",
+        "timestamp": "2026-02-01T19:38:03.677556"
+      }
+    ],
+    "duration_seconds": 18.297014,
+    "error": null,
+    "timestamp": "2026-02-01T19:38:03.677581",
+    "session_id": "everify_1769954883"
+  },
+  {
+    "start_url": "https://www.nta.ac.in/",
+    "user_intent": "jee_nta",
+    "final_url": "https://www.nta.ac.in/",
+    "success": true,
+    "form_found": true,
+    "form_filled": false,
+    "fields_filled_count": 0,
+    "steps_taken": [
+      {
+        "url": "https://www.nta.ac.in/",
+        "action": "navigate",
+        "details": "Initial page load",
+        "timestamp": "2026-02-01T19:38:56.369548",
+        "is_login_page": false
+      },
+      {
+        "url": "https://www.nta.ac.in/",
+        "action": "form_found",
+        "details": "Form detected",
+        "timestamp": "2026-02-01T19:38:56.453928",
+        "is_login_page": false
+      },
+      {
+        "url": "https://www.nta.ac.in/",
+        "action": "form_extraction_failed",
+        "details": "No fields found",
+        "timestamp": "2026-02-01T19:39:32.901928"
+      }
+    ],
+    "duration_seconds": 3.076022,
+    "error": null,
+    "timestamp": "2026-02-01T19:38:56.454084",
+    "session_id": "jee_nta_1769954936"
+  },
+  {
+    "start_url": "https://www.nta.ac.in/",
+    "user_intent": "jee_nta",
+    "final_url": "https://www.nta.ac.in/",
+    "success": false,
+    "form_found": false,
+    "form_filled": false,
+    "fields_filled_count": 0,
+    "steps_taken": [
+      {
+        "url": "https://www.nta.ac.in/",
+        "action": "navigate",
+        "details": "Initial page load",
+        "timestamp": "2026-02-01T19:38:56.369548",
+        "is_login_page": false
+      },
+      {
+        "url": "https://www.nta.ac.in/",
+        "action": "form_found",
+        "details": "Form detected",
+        "timestamp": "2026-02-01T19:38:56.453928",
+        "is_login_page": false
+      },
+      {
+        "url": "https://www.nta.ac.in/",
+        "action": "form_extraction_failed",
+        "details": "No fields found",
+        "timestamp": "2026-02-01T19:39:32.901928"
+      }
+    ],
+    "duration_seconds": 39.523944,
+    "error": "No form fields detected",
+    "timestamp": "2026-02-01T19:39:32.901984",
+    "session_id": "jee_nta_1769954972"
+  },
+  {
+    "start_url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/eVerifyReturn-bl",
+    "user_intent": "everify",
+    "final_url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/register",
+    "success": true,
+    "form_found": true,
+    "form_filled": false,
+    "fields_filled_count": 0,
+    "steps_taken": [
+      {
+        "url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/eVerifyReturn-bl",
+        "action": "navigate",
+        "details": "Initial page load",
+        "timestamp": "2026-02-01T19:39:52.060485",
+        "is_login_page": false
+      },
+      {
+        "url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/register",
+        "action": "spa_click",
+        "details": "Register",
+        "timestamp": "2026-02-01T19:39:59.573666",
+        "is_login_page": false
+      },
+      {
+        "url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/register",
+        "action": "form_filled",
+        "details": "Filled 1 fields",
+        "timestamp": "2026-02-01T19:40:06.039116"
+      }
+    ],
+    "duration_seconds": 10.836189,
+    "error": null,
+    "timestamp": "2026-02-01T19:39:59.573782",
+    "session_id": "everify_1769954999"
+  },
+  {
+    "start_url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/eVerifyReturn-bl",
+    "user_intent": "everify",
+    "final_url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/register",
+    "success": true,
+    "form_found": true,
+    "form_filled": true,
+    "fields_filled_count": 1,
+    "steps_taken": [
+      {
+        "url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/eVerifyReturn-bl",
+        "action": "navigate",
+        "details": "Initial page load",
+        "timestamp": "2026-02-01T19:39:52.060485",
+        "is_login_page": false
+      },
+      {
+        "url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/register",
+        "action": "spa_click",
+        "details": "Register",
+        "timestamp": "2026-02-01T19:39:59.573666",
+        "is_login_page": false
+      },
+      {
+        "url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/register",
+        "action": "form_filled",
+        "details": "Filled 1 fields",
+        "timestamp": "2026-02-01T19:40:06.039116"
+      }
+    ],
+    "duration_seconds": 17.301552,
+    "error": null,
+    "timestamp": "2026-02-01T19:40:06.039150",
+    "session_id": "everify_1769955006"
+  }
+]

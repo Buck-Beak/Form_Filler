@@ -1,29 +1,38 @@
 {
   "pta_login": {
-    "url": "https://practicetestautomation.com/practice-test-login/"
+    "url": "https://practicetestautomation.com/practice-test-login/",
+    "keywords": ["practice", "login", "automation", "test"]
   },
   "w3_form": {
-    "url": "https://www.w3schools.com/html/html_forms.asp"
+    "url": "https://www.w3schools.com/html/html_forms.asp",
+    "keywords": ["w3schools", "html", "forms", "tutorial"]
   },
   "demoqa_form": {
-    "url": "https://demoqa.com/automation-practice-form"
+    "url": "https://demoqa.com/automation-practice-form",
+    "keywords": ["demoqa", "practice", "automation", "form"]
   },
   "jotform_student": {
-    "url": "https://form.jotform.com/212223051303031"
+    "url": "https://form.jotform.com/212223051303031",
+    "keywords": ["jotform", "student", "form"]
   },
   "google_form_sample": {
-    "url": "https://forms.gle/pGLRyRAzYd5E9t1cA"
+    "url": "https://forms.gle/pGLRyRAzYd5E9t1cA",
+    "keywords": ["google", "form", "survey"]
   },
-  "practice":{
-    "url":"https://practicetestautomation.com/practice-test-login/"
+  "practice": {
+    "url": "https://practicetestautomation.com/practice-test-login/",
+    "keywords": ["practice", "login", "test"]
   },
-  "epaytax":{
-    "url":"https://eportal.incometax.gov.in/iec/foservices/#/e-pay-tax-prelogin/user-details"
+  "epaytax": {
+    "url": "https://eportal.incometax.gov.in/iec/foservices/#/e-pay-tax-prelogin/user-details",
+    "keywords": ["income tax", "e-pay", "tax", "india"]
   },
-  "everify":{
-    "url":"https://eportal.incometax.gov.in/iec/foservices/#/pre-login/eVerifyReturn-bl"
+  "everify": {
+    "url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/eVerifyReturn-bl",
+    "keywords": ["e-verify", "return", "income tax"]
   },
-  "passport_seva":{
-    "url":"https://portal2.passportindia.gov.in/AppOnlineProject/user/RegistrationBaseAction?request_locale=en"
+  "passport_seva": {
+    "url": "https://portal2.passportindia.gov.in/AppOnlineProject/user/RegistrationBaseAction?request_locale=en",
+    "keywords": ["passport", "india", "registration", "application"]
   }
 }
