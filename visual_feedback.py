@@ -13,6 +13,7 @@ class VisualFeedback:
     def __init__(self, page: Page):
         self.page = page
         self._inject_styles_done = False
+        self.thoughts = []
     
     async def inject_visual_styles(self):
         """Inject CSS styles for visual feedback"""
@@ -22,245 +23,214 @@ class VisualFeedback:
         try:
             await self.page.evaluate("""
                 () => {
-                    // Remove existing styles if any
                     const existing = document.getElementById('bot-visual-feedback-styles');
                     if (existing) existing.remove();
                     
                     const style = document.createElement('style');
                     style.id = 'bot-visual-feedback-styles';
                     style.textContent = `
-                        /* Highlight current page with blue border */
+                        :root {
+                            --bot-accent: #38bdf8;
+                            --bot-success: #22c55e;
+                            --bot-warning: #f59e0b;
+                            --bot-bg: rgba(15, 23, 42, 0.9);
+                            --bot-border: rgba(56, 189, 248, 0.3);
+                        }
+
                         .bot-page-active {
-                            outline: 4px solid #0066ff !important;
+                            outline: 4px solid var(--bot-accent) !important;
                             outline-offset: -4px !important;
-                            animation: bot-pulse 2s infinite;
                         }
                         
-                        /* Element being considered */
                         .bot-element-considering {
-                            outline: 3px solid #ffaa00 !important;
+                            outline: 3px solid var(--bot-warning) !important;
                             outline-offset: 2px !important;
-                            background-color: rgba(255, 170, 0, 0.1) !important;
-                            animation: bot-shimmer 1s infinite;
+                            background-color: rgba(245, 158, 11, 0.1) !important;
+                            transition: all 0.3s ease;
                         }
                         
-                        /* Element being clicked */
                         .bot-element-clicking {
-                            outline: 4px solid #00ff00 !important;
+                            outline: 4px solid var(--bot-success) !important;
                             outline-offset: 2px !important;
-                            background-color: rgba(0, 255, 0, 0.2) !important;
-                            animation: bot-click-flash 0.5s;
+                            background-color: rgba(34, 197, 94, 0.2) !important;
+                            animation: bot-click-pulse 0.6s ease-out;
                         }
                         
-                        /* Navigation overlay */
-                        .bot-overlay {
+                        /* Thought Log Overlay */
+                        .bot-thought-overlay {
                             position: fixed;
-                            top: 10px;
-                            right: 10px;
-                            background: rgba(0, 0, 0, 0.85);
+                            bottom: 20px;
+                            right: 20px;
+                            width: 350px;
+                            max-height: 400px;
+                            background: var(--bot-bg);
+                            backdrop-filter: blur(12px);
+                            border: 1px solid var(--bot-border);
+                            border-radius: 12px;
                             color: white;
-                            padding: 15px 20px;
-                            border-radius: 10px;
-                            font-family: Arial, sans-serif;
-                            font-size: 14px;
-                            z-index: 999999;
-                            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-                            max-width: 300px;
-                            animation: bot-slide-in 0.3s;
+                            z-index: 1000000;
+                            display: flex;
+                            flex-direction: column;
+                            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+                            font-family: 'Inter', sans-serif;
+                            overflow: hidden;
+                            animation: bot-slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1);
                         }
-                        
-                        .bot-overlay-title {
-                            font-weight: bold;
-                            font-size: 16px;
-                            margin-bottom: 8px;
-                            color: #0066ff;
+
+                        .bot-thought-header {
+                            padding: 12px 16px;
+                            background: rgba(56, 189, 248, 0.1);
+                            border-bottom: 1px solid var(--bot-border);
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
                         }
-                        
-                        .bot-overlay-action {
-                            margin: 5px 0;
-                            padding-left: 20px;
-                            position: relative;
+
+                        .bot-status-indicator {
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                            font-weight: 600;
+                            font-size: 13px;
+                            color: var(--bot-accent);
                         }
-                        
-                        .bot-overlay-action::before {
-                            content: '→';
-                            position: absolute;
-                            left: 0;
-                            color: #00ff00;
+
+                        .bot-spinner {
+                            width: 12px;
+                            height: 12px;
+                            border: 2px solid var(--bot-accent);
+                            border-top-color: transparent;
+                            border-radius: 50%;
+                            animation: bot-spin 0.8s linear infinite;
                         }
-                        
-                        /* Animations */
-                        @keyframes bot-pulse {
-                            0%, 100% { outline-color: #0066ff; }
-                            50% { outline-color: #0099ff; }
+
+                        .bot-thought-list {
+                            padding: 12px;
+                            overflow-y: auto;
+                            flex-grow: 1;
+                            font-size: 13px;
+                            line-height: 1.5;
                         }
-                        
-                        @keyframes bot-shimmer {
-                            0%, 100% { background-color: rgba(255, 170, 0, 0.1); }
-                            50% { background-color: rgba(255, 170, 0, 0.3); }
+
+                        .bot-thought-item {
+                            margin-bottom: 10px;
+                            padding-left: 12px;
+                            border-left: 2px solid rgba(255,255,255,0.1);
+                            animation: bot-fade-in 0.3s ease;
                         }
-                        
-                        @keyframes bot-click-flash {
-                            0% { background-color: rgba(0, 255, 0, 0.5); }
-                            100% { background-color: rgba(0, 255, 0, 0.1); }
+
+                        .bot-thought-item.current {
+                            border-left-color: var(--bot-accent);
+                            color: var(--bot-accent);
                         }
-                        
-                        @keyframes bot-slide-in {
-                            from {
-                                transform: translateX(100%);
-                                opacity: 0;
-                            }
-                            to {
-                                transform: translateX(0);
-                                opacity: 1;
-                            }
+
+                        @keyframes bot-click-pulse {
+                            0% { transform: scale(1); }
+                            50% { transform: scale(1.02); }
+                            100% { transform: scale(1); }
+                        }
+
+                        @keyframes bot-slide-up {
+                            from { transform: translateY(20px); opacity: 0; }
+                            to { transform: translateY(0); opacity: 1; }
+                        }
+
+                        @keyframes bot-fade-in {
+                            from { opacity: 0; }
+                            to { opacity: 1; }
+                        }
+
+                        @keyframes bot-spin {
+                            to { transform: rotate(360deg); }
                         }
                     `;
                     document.head.appendChild(style);
                 }
             """)
             self._inject_styles_done = True
-            print("[VisualFeedback] ✅ Injected visual styles")
         except Exception as e:
-            print(f"[VisualFeedback] ⚠️ Failed to inject styles: {e}")
-    
-    async def highlight_page(self):
-        """Highlight the current page with blue border"""
+            print(f"[VisualFeedback] ⚠️ Injection failed: {e}")
+
+    async def add_thought(self, thought: str):
+        """Add a thought to the dynamic on-page log"""
+        self.thoughts.append(thought)
         await self.inject_visual_styles()
         try:
             await self.page.evaluate("""
-                () => {
-                    document.body.classList.add('bot-page-active');
+                (thought) => {
+                    let overlay = document.getElementById('bot-thought-overlay');
+                    if (!overlay) {
+                        overlay = document.createElement('div');
+                        overlay.id = 'bot-thought-overlay';
+                        overlay.className = 'bot-thought-overlay';
+                        overlay.innerHTML = `
+                            <div class="bot-thought-header">
+                                <div class="bot-status-indicator">
+                                    <div class="bot-spinner"></div>
+                                    <span>ANTIGRAVITY ACTIVE</span>
+                                </div>
+                            </div>
+                            <div id="bot-thought-list" class="bot-thought-list"></div>
+                        `;
+                        document.body.appendChild(overlay);
+                    }
+                    
+                    const list = document.getElementById('bot-thought-list');
+                    const items = list.querySelectorAll('.bot-thought-item');
+                    items.forEach(i => i.classList.remove('current'));
+                    
+                    const item = document.createElement('div');
+                    item.className = 'bot-thought-item current';
+                    item.textContent = thought;
+                    list.appendChild(item);
+                    list.scrollTop = list.scrollHeight;
+                    
+                    // Keep last 10 thoughts
+                    while (list.children.length > 10) {
+                        list.removeChild(list.firstChild);
+                    }
                 }
-            """)
+            """, thought)
         except Exception as e:
-            print(f"[VisualFeedback] Error highlighting page: {e}")
-    
-    async def remove_page_highlight(self):
-        """Remove page highlight"""
-        try:
-            await self.page.evaluate("""
-                () => {
-                    document.body.classList.remove('bot-page-active');
-                }
-            """)
-        except Exception as e:
-            print(f"[VisualFeedback] Error removing page highlight: {e}")
-    
-    async def highlight_element(self, selector: str, highlight_type: str = "considering"):
-        """
-        Highlight an element
-        
-        Args:
-            selector: CSS selector for element
-            highlight_type: 'considering' (yellow) or 'clicking' (green)
-        """
+            print(f"[VisualFeedback] Error adding thought: {e}")
+
+    async def highlight_element(self, selector: str, type: str = "considering"):
+        """Highlight an element with visual styles"""
         await self.inject_visual_styles()
-        
-        css_class = f"bot-element-{highlight_type}"
-        
         try:
             await self.page.evaluate(f"""
                 (selector) => {{
-                    const element = document.querySelector(selector);
-                    if (element) {{
-                        element.classList.add('{css_class}');
-                        element.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
-                        
-                        // Remove highlight after a delay
-                        setTimeout(() => {{
-                            element.classList.remove('{css_class}');
-                        }}, {2000 if highlight_type == 'considering' else 1000});
+                    const el = document.querySelector(selector);
+                    if (el) {{
+                        el.classList.add('bot-element-{type}');
+                        el.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
                     }}
                 }}
             """, selector)
-            await asyncio.sleep(0.3)  # Let user see the highlight
-        except Exception as e:
-            print(f"[VisualFeedback] Error highlighting element: {e}")
-    
-    async def show_action_overlay(self, action: str, details: Optional[str] = None):
-        """
-        Show an overlay describing current action
-        
-        Args:
-            action: Main action (e.g., "Navigating", "Clicking button", "Filling form")
-            details: Additional details (e.g., button text, field name)
-        """
-        await self.inject_visual_styles()
-        
-        details_html = f"<div class='bot-overlay-action'>{details}</div>" if details else ""
-        
-        try:
-            await self.page.evaluate(f"""
-                (action, details) => {{
-                    // Remove existing overlay
-                    const existing = document.getElementById('bot-action-overlay');
-                    if (existing) existing.remove();
-                    
-                    // Create new overlay
-                    const overlay = document.createElement('div');
-                    overlay.id = 'bot-action-overlay';
-                    overlay.className = 'bot-overlay';
-                    overlay.innerHTML = `
-                        <div class='bot-overlay-title'>🤖 Bot Action</div>
-                        <div class='bot-overlay-action'>${{action}}</div>
-                        ${{details || ''}}
-                    `;
-                    document.body.appendChild(overlay);
-                    
-                    // Auto-remove after 5 seconds
-                    setTimeout(() => {{
-                        if (overlay.parentElement) {{
-                            overlay.remove();
-                        }}
-                    }}, 5000);
-                }}
-            """, action, details_html)
-        except Exception as e:
-            print(f"[VisualFeedback] Error showing overlay: {e}")
-    
-    async def show_thinking(self, message: str):
-        """Show 'thinking' state"""
-        await self.show_action_overlay("🤔 Thinking...", message)
-    
-    async def show_navigating(self, target: str):
-        """Show navigation action"""
-        await self.show_action_overlay("🧭 Navigating", f"Looking for: {target}")
-    
-    async def show_clicking(self, element_text: str):
-        """Show clicking action"""
-        await self.show_action_overlay("👆 Clicking", f"Element: {element_text[:50]}")
-    
-    async def show_form_found(self):
-        """Show form found success"""
-        await self.show_action_overlay("✅ Form Found!", "Starting to fill fields...")
-    
-    async def show_filling_field(self, field_name: str, value: str):
-        """Show field being filled"""
-        await self.show_action_overlay("✍️ Filling Field", f"{field_name}: {value[:30]}")
-    
-    async def remove_overlay(self):
-        """Remove action overlay"""
+        except: pass
+
+    async def clear_highlights(self):
+        """Remove all visual feedback highlights"""
         try:
             await self.page.evaluate("""
                 () => {
-                    const overlay = document.getElementById('bot-action-overlay');
-                    if (overlay) overlay.remove();
+                    document.querySelectorAll('.bot-element-considering, .bot-element-clicking')
+                        .forEach(el => {
+                            el.classList.remove('bot-element-considering');
+                            el.classList.remove('bot-element-clicking');
+                        });
                 }
             """)
-        except Exception as e:
-            print(f"[VisualFeedback] Error removing overlay: {e}")
+        except: pass
+
+    async def show_form_found(self):
+        await self.add_thought("🎯 Target form detected! Preparing to fill...")
+
+    async def show_filling_field(self, name: str, value: str):
+        await self.add_thought(f"✍️ Filling field \"{name}\" with \"{value}\"")
     
-    async def flash_element_click(self, element_handle):
-        """Flash an element when clicking it"""
-        try:
-            await element_handle.evaluate("""
-                (element) => {
-                    element.classList.add('bot-element-clicking');
-                    setTimeout(() => {
-                        element.classList.remove('bot-element-clicking');
-                    }, 500);
-                }
-            """)
-        except Exception as e:
-            print(f"[VisualFeedback] Error flashing element: {e}")
+    async def show_clicking(self, text: str):
+        await self.add_thought(f"👆 Clicking on \"{text}\"")
+
+    async def show_thinking(self, message: str):
+        await self.add_thought(f"🤔 {message}")

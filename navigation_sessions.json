@@ -208,5 +208,201 @@
     "error": null,
     "timestamp": "2026-02-01T19:40:06.039150",
     "session_id": "everify_1769955006"
+  },
+  {
+    "start_url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/eVerifyReturn-bl",
+    "user_intent": "everify",
+    "final_url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/register",
+    "success": true,
+    "form_found": true,
+    "form_filled": false,
+    "fields_filled_count": 0,
+    "steps_taken": [
+      {
+        "url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/eVerifyReturn-bl",
+        "action": "navigate",
+        "details": "Initial page load",
+        "timestamp": "2026-02-28T23:23:20.743866",
+        "is_login_page": false
+      },
+      {
+        "url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/register",
+        "action": "spa_click",
+        "details": "Register",
+        "timestamp": "2026-02-28T23:23:28.388958",
+        "is_login_page": false
+      },
+      {
+        "url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/register",
+        "action": "form_filled",
+        "details": "Filled 1 fields",
+        "timestamp": "2026-02-28T23:23:37.709769"
+      }
+    ],
+    "duration_seconds": 13.880539,
+    "error": null,
+    "timestamp": "2026-02-28T23:23:28.389049",
+    "session_id": "everify_1772301208"
+  },
+  {
+    "start_url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/eVerifyReturn-bl",
+    "user_intent": "everify",
+    "final_url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/register",
+    "success": true,
+    "form_found": true,
+    "form_filled": true,
+    "fields_filled_count": 1,
+    "steps_taken": [
+      {
+        "url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/eVerifyReturn-bl",
+        "action": "navigate",
+        "details": "Initial page load",
+        "timestamp": "2026-02-28T23:23:20.743866",
+        "is_login_page": false
+      },
+      {
+        "url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/register",
+        "action": "spa_click",
+        "details": "Register",
+        "timestamp": "2026-02-28T23:23:28.388958",
+        "is_login_page": false
+      },
+      {
+        "url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/register",
+        "action": "form_filled",
+        "details": "Filled 1 fields",
+        "timestamp": "2026-02-28T23:23:37.709769"
+      }
+    ],
+    "duration_seconds": 23.201294,
+    "error": null,
+    "timestamp": "2026-02-28T23:23:37.709813",
+    "session_id": "everify_1772301217"
+  },
+  {
+    "start_url": "http://localhost:8000",
+    "user_intent": "Local Test Website",
+    "final_url": "http://localhost:8000/form.html",
+    "success": true,
+    "form_found": true,
+    "form_filled": true,
+    "fields_filled_count": 5,
+    "steps_taken": [
+      {
+        "url": "http://localhost:8000/form.html",
+        "action": "form_filled",
+        "details": "Filled 5 fields",
+        "timestamp": "2026-03-02T01:27:41.689112"
+      }
+    ],
+    "duration_seconds": 39.120096,
+    "error": null,
+    "timestamp": "2026-03-02T01:27:41.689204",
+    "session_id": "Local Test Website_1772395061"
+  },
+  {
+    "start_url": "http://localhost:8000",
+    "user_intent": "Local Test Website",
+    "final_url": "http://localhost:8000/form.html",
+    "success": true,
+    "form_found": true,
+    "form_filled": true,
+    "fields_filled_count": 9,
+    "steps_taken": [
+      {
+        "url": "http://localhost:8000/form.html",
+        "action": "form_filled",
+        "details": "Filled 9 fields",
+        "timestamp": "2026-03-02T01:33:50.353567"
+      }
+    ],
+    "duration_seconds": 27.227559,
+    "error": null,
+    "timestamp": "2026-03-02T01:33:50.353701",
+    "session_id": "Local Test Website_1772395430"
+  },
+  {
+    "start_url": "http://localhost:8000",
+    "user_intent": "Local Test Website",
+    "final_url": "http://localhost:8000/form.html",
+    "success": true,
+    "form_found": true,
+    "form_filled": true,
+    "fields_filled_count": 9,
+    "steps_taken": [
+      {
+        "url": "http://localhost:8000/form.html",
+        "action": "form_filled",
+        "details": "Filled 9 fields",
+        "timestamp": "2026-03-02T01:36:26.136078"
+      }
+    ],
+    "duration_seconds": 27.144778,
+    "error": null,
+    "timestamp": "2026-03-02T01:36:26.136183",
+    "session_id": "Local Test Website_1772395586"
+  },
+  {
+    "start_url": "http://localhost:8000",
+    "user_intent": "Local Test Website",
+    "final_url": "http://localhost:8000/form.html",
+    "success": true,
+    "form_found": true,
+    "form_filled": true,
+    "fields_filled_count": 9,
+    "steps_taken": [
+      {
+        "url": "http://localhost:8000/form.html",
+        "action": "form_filled",
+        "details": "Filled 9 fields",
+        "timestamp": "2026-03-02T01:40:27.421013"
+      }
+    ],
+    "duration_seconds": 24.731785,
+    "error": null,
+    "timestamp": "2026-03-02T01:40:27.421156",
+    "session_id": "Local Test Website_1772395827"
+  },
+  {
+    "start_url": "http://localhost:8000",
+    "user_intent": "Local Test Website",
+    "final_url": "http://localhost:8000/login.html",
+    "success": true,
+    "form_found": true,
+    "form_filled": true,
+    "fields_filled_count": 2,
+    "steps_taken": [
+      {
+        "url": "http://localhost:8000/login.html",
+        "action": "form_filled",
+        "details": "Filled 2 fields",
+        "timestamp": "2026-03-02T01:42:08.343643"
+      }
+    ],
+    "duration_seconds": 27.605106,
+    "error": null,
+    "timestamp": "2026-03-02T01:42:08.343838",
+    "session_id": "Local Test Website_1772395928"
+  },
+  {
+    "start_url": "http://localhost:8000",
+    "user_intent": "Local Test Website",
+    "final_url": "http://localhost:8000/login.html",
+    "success": true,
+    "form_found": true,
+    "form_filled": true,
+    "fields_filled_count": 2,
+    "steps_taken": [
+      {
+        "url": "http://localhost:8000/login.html",
+        "action": "form_filled",
+        "details": "Filled 2 fields",
+        "timestamp": "2026-03-02T01:54:38.744034"
+      }
+    ],
+    "duration_seconds": 23.431622,
+    "error": null,
+    "timestamp": "2026-03-02T01:54:38.744095",
+    "session_id": "Local Test Website_1772396678"
   }
 ]

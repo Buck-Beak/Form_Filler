@@ -1,17 +1,22 @@
 [
     {
-        "telegram_id": 1542256555,
+        "telegram_id": 1386337140,
         "name": "Nanda Krishna",
-        "username": "alice_j",
-        "password": "password123",
+        "username": "nanda_k",
+        "password": "securePass456",
         "dob": "2003-11-21",
-        "email": "help@uidai.gov.in",
+        "email": "nanda.krishna@example.com",
         "mobile": "9876543210",
-        "panAdhaarUserId": "6135 6410 5062",
+        "panAdhaarUserId": "ABCDE1234F",
         "assessment_year": "2023-24",
         "gender": "female",
-        "address": "DIO: Krishna Kumar D, Krishna Vilasam, Perumpanachy PO, Madappally, PO:Perumpanachy, DIST:Kottayam, Kerala, 686536",
-        "father_name": "Krishna Kumar D"
+        "address": "Krishna Vilasam, Perumpanachy PO, Madappally, Kottayam, Kerala - 686536",
+        "father_name": "Krishna Kumar D",
+        "occupation": "student",
+        "terms_agreement": true,
+        "auto_submit": false,
+        "auto_login": true,
+        "remember_me": true
     },
     {
         "telegram_id": 987654321,

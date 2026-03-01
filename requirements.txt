@@ -10,6 +10,8 @@ google-genai
 # Browsers / automation
 playwright
 selenium
+playwright-stealth>=1.0.6
+2captcha-python>=2.0.0
 
 # Telegram bot
 python-telegram-bot>=21

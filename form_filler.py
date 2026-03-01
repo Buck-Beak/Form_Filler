@@ -9,6 +9,11 @@ KEY_MAP = {
     "pan": "panAdhaarUserId",
     "aadhaar_number": "panAdhaarUserId",
     "aadhaar": "panAdhaarUserId",
+    "full_name": "name",
+    "name": "name",
+    "gender": "gender",
+    "occupation": "occupation",
+    "terms_agreement": "terms_agreement"
 }
 
 async def autofill_form(page, classified_fields, user_data):
@@ -18,69 +23,118 @@ async def autofill_form(page, classified_fields, user_data):
     visual = VisualFeedback(page)
     await visual.inject_visual_styles()
     
+    # Extract "extracted_fields" if nested (as seen in main.py logic)
+    actual_user_data = user_data.get("extracted_fields", user_data)
+    
     for mapping in classified_fields:
+        category = mapping.get("category")
+        if category == "other":
+            continue
+            
         field_id = mapping.get("id")
         field_name = mapping.get("name")
-        category = mapping.get("category")
+        field_type = mapping.get("type", "text").lower()
         field_frame = mapping.get("frame", "main")
+        
         data_key = KEY_MAP.get(category, category)
-        value = user_data.get(data_key)
-        if not value:
-            print(f"↪ Skip: no user value for category='{category}' (mapped key='{data_key}')")
+        value = actual_user_data.get(data_key)
+        
+        if value is None:
+            print(f"↪ Skip: no user value for '{category}' (data_key='{data_key}')")
             continue
-        candidates = []
-        if field_id:
-            candidates.append(f"#{field_id}")
-        if field_name:
-            candidates.append(f"[name='{field_name}']")
-        if mapping.get("formcontrolname"):
-            candidates.append(f"[formcontrolname='{mapping['formcontrolname']}']")
-        if mapping.get("placeholder"):
-            candidates.append(f"[placeholder='{mapping['placeholder']}']")
-        if mapping.get("aria_label"):
-            candidates.append(f"[aria-label='{mapping['aria_label']}']")
-        if not candidates:
-            print(f"↪ Skip: no selector candidates for category='{category}'")
-            continue
+
         target_frame = page.main_frame
         if field_frame != "main":
             for frame in page.frames:
                 if frame.url == field_frame or frame.name == field_frame:
                     target_frame = frame
                     break
-        filled_this = False
-        for selector in candidates:
-            try:
-                element = target_frame.locator(selector).first
-                await asyncio.sleep(0.2)
-                if not await element.count():
-                    continue
-                if not await element.is_visible():
-                    continue
-                
-                # Show visual feedback
-                try:
+
+        try:
+            # ── 1. RADIO BUTTONS ──────────────────────────────────────────────
+            if field_type == "radio":
+                # Find the radio with the matching value
+                selector = f"input[type='radio'][name='{field_name}'][value='{str(value).lower()}']"
+                element = target_frame.locator(selector)
+                if await element.count() > 0:
                     await visual.show_filling_field(category, str(value))
-                    await visual.highlight_element(selector, "clicking")
-                except:
-                    pass  # Don't fail filling if visual feedback fails
-                
-                await element.click()
-                await asyncio.sleep(0.1)
-                try:
-                    await element.clear()
-                except Exception:
-                    await element.fill("")
-                await asyncio.sleep(0.1)
-                await element.type(str(value), delay=50)
-                filled_count += 1
-                filled_this = True
-                print(f"✅ Filled '{category}' (mapped '{data_key}') via {selector} in frame {field_frame}")
-                break
-            except Exception as e:
-                print(f"⚠️ Try selector failed for '{category}' via {selector}: {e}")
-        if not filled_this:
-            print(f"❌ Could not fill '{category}' (mapped '{data_key}') — no selector matched")
+                    await element.click()
+                    filled_count += 1
+                    print(f"✅ Selected Radio '{category}': {value}")
+                continue
+
+            # ── 2. SELECT DROPDOWNS ────────────────────────────────────────────
+            if field_type == "select" or field_type == "select-one":
+                selector = f"select[name='{field_name}']" if field_name else f"#{field_id}"
+                element = target_frame.locator(selector)
+                if await element.count() > 0:
+                    await visual.show_filling_field(category, str(value))
+                    await element.select_option(value=str(value).lower())
+                    filled_count += 1
+                    print(f"✅ Selected Opt '{category}': {value}")
+                continue
+
+            # ── 3. CHECKBOXES ──────────────────────────────────────────────────
+            if field_type == "checkbox":
+                selector = f"input[type='checkbox'][name='{field_name}']" if field_name else f"#{field_id}"
+                element = target_frame.locator(selector)
+                if await element.count() > 0:
+                    if value is True or str(value).lower() in ["true", "yes", "1", "on"]:
+                        await visual.show_filling_field(category, "CHECKED")
+                        await element.check()
+                        filled_count += 1
+                        print(f"✅ Checked '{category}'")
+                continue
+
+            # ── 4. TEXT / GENERAL INPUTS ───────────────────────────────────────
+            # Re-use your candidate logic for text fields
+            candidates = []
+            if field_id: candidates.append(f"#{field_id}")
+            if field_name: candidates.append(f"[name='{field_name}']")
+            
+            for selector in candidates:
+                element = target_frame.locator(selector).first
+                if await element.count() > 0 and await element.is_visible():
+                    await visual.show_filling_field(category, str(value))
+                    await element.fill(str(value))
+                    filled_count += 1
+                    print(f"✅ Typed '{category}': {value}")
+                    break
+
+        except Exception as e:
+            print(f"⚠️ Error filling '{category}': {e}")
+
+    # ── 🚀 AUTO-SUBMIT ────────────────────────────────────────────────────────
+    auto_submit_enabled = actual_user_data.get("auto_submit", False)
     
+    if not auto_submit_enabled:
+        print("\n✋ Auto-Submit is DISABLED. Please verify the form and click Submit manually.")
+        await visual.add_thought("✋ Auto-Submit is disabled. Please review and submit manually.")
+        print(f"\n🎉 Total fields filled: {filled_count}/{len(classified_fields)}")
+        return filled_count
+
+    print("\n🚀 Attempting Auto-Submit...")
+    await asyncio.sleep(1)
+    try:
+        # Look for submit buttons
+        submit_selectors = [
+            "button[type='submit']",
+            "input[type='submit']",
+            "button:has-text('Submit')",
+            "button:has-text('Register')",
+            "button:has-text('Apply')",
+            ".btn:has-text('Submit')"
+        ]
+        
+        for sel in submit_selectors:
+            btn = page.locator(sel).first
+            if await btn.count() > 0 and await btn.is_visible():
+                print(f"👉 Clicking submit button: {sel}")
+                await visual.add_thought("🚀 Form filled! Clicking Submit...")
+                await btn.click()
+                break
+    except Exception as e:
+        print(f"⚠️ Submit failed: {e}")
+
     print(f"\n🎉 Total fields filled: {filled_count}/{len(classified_fields)}")
     return filled_count

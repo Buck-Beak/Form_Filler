@@ -7,25 +7,28 @@ def classify_fields_with_gemini(fields, gemini_model):
 You are given form fields from a webpage. 
 Each field has attributes: id, name, placeholder, type, and label.
 Classify each field into one of these categories:
-- name
+- name (full name)
 - email
 - password
-- phone
+- phone (mobile)
 - address
 - father_name
 - mother_name
 - aadhaar_number
-- date_of_birth
+- date_of_birth (dob)
 - assessment_year
 - pan
-- dob
-- mobile
+- gender (male/female radio buttons)
+- occupation (select dropdown)
+- terms_agreement (checkbox for terms and conditions)
 - other
+
 Return JSON ONLY (no markdown, no explanation), format:
 [
-  {{"id": "...", "name": "...", "category": "..."}},
+  {{ "id": "...", "name": "...", "type": "...", "category": "...", "label": "...", "frame": "..." }},
   ...
 ]
+Keep all original attributes and ADD the "category" field.
 Fields:
 {json.dumps(fields, indent=2)}
 """

@@ -1,5 +1,8 @@
 # Form_Filler
 
+> [!IMPORTANT]
+> **Collaborating with a Team?** Check out the [TEAM_COLLABORATION_GUIDE.md](TEAM_COLLABORATION_GUIDE.md) for setup instructions and contribution workflows.
+
 A Telegram bot that intelligently auto-fills web forms using AI classification (Gemini) and browser automation.
 
 ## 🚀 **Recommended Approach: playwright_bot.py**

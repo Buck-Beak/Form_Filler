@@ -16,6 +16,9 @@ from field_classifier import classify_fields_with_gemini
 from form_filler import autofill_form
 from document_processor import DocumentProcessor
 from navigation_agent import NavigationAgent, NavigationBlockedError
+from crawler import WebCrawler
+from captcha_handler import CaptchaHandler
+from login_handler import LoginHandler
 from dynamic_url_extractor import find_best_url
 
 # ── Load forms DB and users DB ──
@@ -27,11 +30,13 @@ with open("official_forms_urls.json", "r") as f:
     official_urls = json.load(f)
 
 pending_requests = {}
+active_crawlers = {}  # telegram_id -> WebCrawler instance
 
 # Helper: wait until the browser page is closed or a timeout elapses
 async def wait_until_page_closed(page, timeout: int = 300):
     try:
-        await asyncio.wait_for(page.wait_for_event("close"), timeout=timeout)
+        # Disable internal playwright 30s timeout, rely on asyncio.wait_for
+        await asyncio.wait_for(page.wait_for_event("close", timeout=0), timeout=timeout)
     except asyncio.TimeoutError:
         # Timed out waiting for the user to close the page; proceed to cleanup
         pass
@@ -41,6 +46,11 @@ gemini_model = genai.GenerativeModel('gemini-2.5-flash')
 
 # Initialize document processor
 document_processor = DocumentProcessor(gemini_model)
+
+# Module-level handler instances shared across all sessions.
+# bot is injected lazily inside button_handler before each crawl run.
+captcha_handler = CaptchaHandler()
+login_handler   = LoginHandler(users_db=users_db)
 
 def save_users_db():
     """Safely save users database to file"""
@@ -140,6 +150,12 @@ async def myid_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     
     await update.message.reply_text(status_msg)
+
+async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Quick access to local test website"""
+    # Manually set text to 'test' so handle_message picks it up
+    update.message.text = "test"
+    await handle_message(update, context)
 
 # sending json to standalone app after extracting fields from document
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -244,9 +260,47 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.message.from_user.id
     user_text = update.message.text
     chat_id = update.message.chat_id
-    
-    # First try static lookup
-    url, form_key = get_form_url(user_text)
+
+    # ── Intercept credential replies ──────────────────────────────────────
+    if login_handler.is_waiting_for_creds(telegram_id):
+        if login_handler.signal_credentials_received(telegram_id, user_text):
+            await update.message.reply_text(
+                "✅ Credentials received! Attempting login…"
+            )
+            return
+        else:
+            await update.message.reply_text(
+                "⚠️ Please use the format  `username:password`",
+                parse_mode="Markdown",
+            )
+            return
+
+    # ── Intercept OTP replies ─────────────────────────────────────────────
+    if login_handler.is_waiting_for_otp(telegram_id):
+        if login_handler.signal_otp_received(telegram_id, user_text):
+            await update.message.reply_text("✅ OTP received! Continuing…")
+            return
+    # ── Intercept 'continue' / 'next' (Human Resume) ─────────────────────
+    if user_text.lower().strip() in ["continue", "next", "resume"]:
+        if telegram_id in active_crawlers:
+            crawler = active_crawlers[telegram_id]
+            if crawler.nav_agent.is_paused:
+                crawler.nav_agent.is_paused = False
+                await update.message.reply_text("🚀 Resuming navigation...")
+                return
+            else:
+                await update.message.reply_text("ℹ️ Bot is already working. No need to resume.")
+                return
+        else:
+            await update.message.reply_text("❌ No active navigation to resume.")
+            return
+
+    # ── Intercept 'test' command ──────────────────────────────────────────
+    if user_text.lower().strip() == "test":
+        url = "http://localhost:8000"
+        form_key = "Local Test Website"
+    else:
+        url, form_key = get_form_url(user_text)
     
     # If not found, use dynamic AI-powered extractor
     if not url:
@@ -295,6 +349,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     callback_data = query.data
+
+    # ── CAPTCHA "Done" button ─────────────────────────────────────────────
+    if callback_data.startswith("captcha_done_"):
+        chat_id_str = callback_data.replace("captcha_done_", "")
+        try:
+            captcha_handler.signal_captcha_solved(int(chat_id_str))
+            await query.edit_message_caption(
+                caption="✅ CAPTCHA acknowledged! Continuing navigation…"
+            )
+        except Exception:
+            await query.answer("✅ Got it! Continuing…")
+        return
+
     if not callback_data.startswith("fill_"):
         return
     request_id = callback_data.replace("fill_", "")
@@ -302,6 +369,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Request expired or invalid.")
         return
     request = pending_requests[request_id]
+    telegram_id = request["telegram_id"]
     url = request["url"]
     form_key = request["form_key"]
 
@@ -334,16 +402,35 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(
         f"🔄 Opening browser for: **{form_key}**\n"
         f"🧭 Navigating to form page...\n"
-        f"(This may take 1-2 minutes as the AI navigates the website)"
+        f"(The crawler may navigate through login pages, solve CAPTCHAs, \n"
+        f"and explore the site to reach the form — this may take 1–3 minutes)"
     )
     try:
         p, browser, browser_context, page = await launch_browser()
-        agent = NavigationAgent(page, gemini_model)
 
-        # Use the navigation agent to reach the actual form page
+        # Inject bot reference into shared handlers for this session
+        captcha_handler.bot  = context.bot
+        login_handler.bot    = context.bot
+        login_handler.users_db = users_db
+
+        crawler = WebCrawler(
+            page       = page,
+            gemini_model = gemini_model,
+            bot        = context.bot,
+            chat_id    = request["chat_id"],
+            user_data  = user_data,
+            users_db   = users_db,
+            request_id = request_id,
+        )
+        active_crawlers[telegram_id] = crawler
+        agent = crawler.nav_agent  # keep reference for session helpers below
+
+        # Use the crawler to reach the actual form page
         try:
-            print(f"\n[Bot] Starting navigation to find form for: {form_key}")
-            found, final_url, reason = await agent.maps_to_form(url, form_key, max_attempts=5)
+            print(f"\n[Bot] Starting WebCrawler for: {form_key}")
+            found, final_url, reason = await crawler.crawl(
+                url, form_key, max_depth=8
+            )
         except NavigationBlockedError as nav_err:
             await context.bot.send_message(
                 chat_id=request["chat_id"],
@@ -425,10 +512,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                 )
                 # Wait longer for user to login
-                try:
-                    await asyncio.wait_for(page.wait_for_event("close"), timeout=180)
-                except asyncio.TimeoutError:
-                    print("[Bot] Login timeout, closing browser")
+                await wait_until_page_closed(page, timeout=180)
             elif "loop" in reason.lower():
                 await context.bot.send_message(
                     chat_id=request["chat_id"],
@@ -448,7 +532,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                 )
                 try:
-                    await asyncio.wait_for(page.wait_for_event("close"), timeout=120)
+                    await wait_until_page_closed(page, timeout=120)
                 except asyncio.TimeoutError:
                     pass
             elif "blocked" in reason.lower() or "captcha" in reason.lower():
@@ -471,7 +555,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                 )
                 try:
-                    await asyncio.wait_for(page.wait_for_event("close"), timeout=120)
+                    await wait_until_page_closed(page, timeout=120)
                 except asyncio.TimeoutError:
                     pass
             elif "no navigable" in reason.lower() or "no links" in reason.lower():
@@ -493,7 +577,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                 )
                 try:
-                    await asyncio.wait_for(page.wait_for_event("close"), timeout=120)
+                    await wait_until_page_closed(page, timeout=120)
                 except asyncio.TimeoutError:
                     pass
             else:
@@ -514,7 +598,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                 )
                 try:
-                    await asyncio.wait_for(page.wait_for_event("close"), timeout=120)
+                    await wait_until_page_closed(page, timeout=120)
                 except asyncio.TimeoutError:
                     pass
             
@@ -564,10 +648,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "⏱️ Browser will stay open for 2 minutes."
                 )
             )
-            try:
-                await asyncio.wait_for(page.wait_for_event("close"), timeout=120)
-            except asyncio.TimeoutError:
-                pass
+            await wait_until_page_closed(page, timeout=120)
             
             # Update session with failure
             if hasattr(agent, 'current_session_steps'):
@@ -643,6 +724,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=request["chat_id"],
             text=error_msg
         )
+    finally:
+        # Cleanup active crawler tracking
+        if telegram_id in active_crawlers:
+            del active_crawlers[telegram_id]
+            
     del pending_requests[request_id]
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -667,6 +753,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("myid", myid_command))
+    app.add_handler(CommandHandler("test", test_command))
     
     # Add message handlers
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
