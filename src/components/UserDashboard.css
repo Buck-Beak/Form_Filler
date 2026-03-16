@@ -134,3 +134,33 @@
   }
 }
 
+.extracted-fields {
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  background: #fafafa;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+}
+
+.field-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+  margin-bottom: 0.5rem;
+}
+
+.field-key {
+  font-weight: 600;
+  color: #444;
+  min-width: 130px;
+}
+
+.field-value {
+  color: #333;
+  word-break: break-word;
+}
+
+.muted {
+  color: #777;
+}
+

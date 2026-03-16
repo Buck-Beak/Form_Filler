@@ -12,7 +12,7 @@ const __dirname = path.dirname(__filename);
 
 console.log("User data path:", app.getPath("userData"));
 import express from "express";
-import { saveUser, loadDB } from "./storage.js";
+import { saveUser, loadDB, getUser } from "./storage.js";
 
 let mainWindow;
 
@@ -90,6 +90,50 @@ app.whenReady().then(() => {
 
     const { password, ...userWithoutPassword } = storedUser;
     res.json({ status: "saved", user: userWithoutPassword });
+  });
+
+  // Accept form-fill data from Telegram web app and forward to backend for MongoDB storage
+  server.post("/form-fill", async (req, res) => {
+    const formFillData = req.body;
+    console.log("Received form-fill data:", formFillData);
+
+    const backendUrl = "http://localhost:3000/api/form-fill"; // Backend API
+
+    try {
+      const response = await fetch(backendUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formFillData),
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        return res.status(response.status).json(result);
+      }
+
+      res.json(result);
+    } catch (err) {
+      console.error("Error forwarding form-fill data to backend:", err);
+      res.status(500).json({ error: "Failed to save form fill data" });
+    }
+  });
+
+  // Get saved user details by telegram ID
+  server.get("/user-details/:telegram_id", (req, res) => {
+    const telegramId = req.params.telegram_id;
+    console.log(`Received request for user details with telegram_id: ${telegramId}`);
+    if (!telegramId) {
+      return res.status(400).json({ error: "telegram_id required" });
+    }
+
+    const user = getUser(telegramId);
+    console.log(`Fetched user for telegram_id ${telegramId}:`, user);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const { password, ...userWithoutPassword } = user;
+    res.json({ user: userWithoutPassword });
   });
 
   server.listen(5000, () => {

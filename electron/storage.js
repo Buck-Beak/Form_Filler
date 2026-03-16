@@ -43,13 +43,34 @@ export function saveUser(receivedJSON) {
 
   const index = db.findIndex(u => u.telegram_id === telegramId);
 
-  // ❌ Do NOT create new user
+  const incomingFields = receivedJSON.extracted_fields || {};
+
+  // If the user doesn't exist in the DB yet, create it so we can store Telegram data.
   if (index === -1) {
-    console.warn("User not found, skipping update:", telegramId);
-    return null;
+    const userRecord = {
+      telegram_id: telegramId,
+      extracted_fields: {},
+      fields_count: 0,
+      ...receivedJSON,
+    };
+
+    // If incoming JSON already contains extracted_fields, normalize
+    if (userRecord.extracted_fields && typeof userRecord.extracted_fields === "object") {
+      const filteredFields = {};
+      Object.entries(userRecord.extracted_fields).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== "") {
+          filteredFields[key] = value;
+        }
+      });
+      userRecord.extracted_fields = filteredFields;
+      userRecord.fields_count = Object.keys(filteredFields).length;
+    }
+
+    db.push(userRecord);
+    saveDB(db);
+    return userRecord;
   }
 
-  const incomingFields = receivedJSON.extracted_fields || {};
   const existingFields = db[index].extracted_fields || {};
 
   // ✅ Patch only valid fields
@@ -67,4 +88,14 @@ export function saveUser(receivedJSON) {
 
   saveDB(db);
   return db[index];
+}
+
+//reads users.json and returns the stored user entry for that telegram_id
+
+export function getUser(telegramId) {
+  if (!telegramId) return null;
+  const db = loadDB();
+  console.log("Database of user: ",db)
+  console.log("database:",db.find((u) => u.telegram_id === telegramId))
+  return db.find((u) => u.telegram_id === Number(telegramId)) || null;
 }

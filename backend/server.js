@@ -7,6 +7,7 @@ import cors from "cors";
 
 import userRoute from "./Routes/userRoute.js";
 import verificationRoute from "./Routes/verificationRoute.js";
+import formFillRoute from "./Routes/formFillRoute.js";
 import { initializeBot } from "./Services/telegramBot.js";
 
 const app = express();
@@ -22,6 +23,7 @@ initializeBot(process.env.TELEGRAM_BOT_TOKEN);
 
 app.use("/api/user", userRoute);
 app.use("/api/verification", verificationRoute);
+app.use("/api/form-fill", formFillRoute);
 
 const PORT = process.env.PORT || 3000;
 

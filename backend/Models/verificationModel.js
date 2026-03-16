@@ -25,7 +25,8 @@ const VerificationSchema = new mongoose.Schema(
 );
 
 // Auto-delete expired verifications
-VerificationSchema.index({ expires_at: 1 }, { expireAfterSeconds: 0 });
+// `expires: 0` on the `expires_at` path already created the TTL index.
+// Remove the explicit duplicate index declaration to avoid Mongoose warning.
 
 export default mongoose.model("Verification", VerificationSchema);
 

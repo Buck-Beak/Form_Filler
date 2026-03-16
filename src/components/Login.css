@@ -113,3 +113,10 @@
   color: #764ba2;
 }
 
+.dashboard-buttons {
+  gap: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+

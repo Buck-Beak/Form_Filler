@@ -26,8 +26,8 @@ function Login({ onLogin,user }) {
       [e.target.name]: e.target.value,
     });
     setError("");
-    // Reset verification if telegram_id changes
-    if (e.target.name === "telegram_id") {
+    // Reset verification if telegram_id changes (only during registration)
+    if (e.target.name === "telegram_id" && isRegistering) {
       setIsVerified(false);
       setVerificationSent(false);
       setFormData(prev => ({ ...prev, verification_code: "" }));
@@ -185,7 +185,10 @@ function Login({ onLogin,user }) {
         // Registration → switch to login
         alert("Registration successful! Please login.");
         setIsRegistering(false);
-        setFormData({ telegram_id: "", password: "", name: "", email: "" });
+        setFormData({ telegram_id: "", password: "", name: "", email: "", verification_code: "" });
+        setIsVerified(false);
+        setVerificationSent(false);
+        setBotLink("");
         navigate("/login");
       }
    } catch (error) {
@@ -210,7 +213,68 @@ function Login({ onLogin,user }) {
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label htmlFor="telegramId">Telegram ID *</label>
-            <div style={{ display: "flex", gap: "8px", alignItems: "flex-start" }}>
+            {isRegistering ? (
+              <>
+                <div style={{ display: "flex", gap: "8px", alignItems: "flex-start" }}>
+                  <input
+                    type="text"
+                    id="telegramId"
+                    name="telegram_id"
+                    value={formData.telegram_id}
+                    onChange={handleChange}
+                    required
+                    placeholder="Enter your Telegram ID"
+                    style={{ flex: 1 }}
+                    disabled={isVerified}
+                  />
+                  {!isVerified && (
+                    <button
+                      type="button"
+                      onClick={handleVerifyTelegramId}
+                      disabled={verifying || !formData.telegram_id}
+                      style={{
+                        padding: "10px 16px",
+                        backgroundColor: "#007bff",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "4px",
+                        cursor: verifying || !formData.telegram_id ? "not-allowed" : "pointer",
+                        opacity: verifying || !formData.telegram_id ? 0.6 : 1,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {verifying ? "Sending..." : "Verify"}
+                    </button>
+                  )}
+                </div>
+                {isVerified && (
+                  <div style={{ marginTop: "8px", color: "#28a745", fontSize: "14px" }}>
+                    ✓ Telegram ID verified
+                  </div>
+                )}
+                {verificationSent && !isVerified && (
+                  <div style={{ marginTop: "8px" }}>
+                    <p style={{ fontSize: "14px", color: "#666", marginBottom: "8px" }}>
+                      Verification code sent! Check your Telegram.
+                    </p>
+                    {botLink && (
+                      <a
+                        href={botLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          color: "#007bff",
+                          textDecoration: "none",
+                          fontSize: "14px",
+                        }}
+                      >
+                        Open Telegram Bot →
+                      </a>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
               <input
                 type="text"
                 id="telegramId"
@@ -219,58 +283,11 @@ function Login({ onLogin,user }) {
                 onChange={handleChange}
                 required
                 placeholder="Enter your Telegram ID"
-                style={{ flex: 1 }}
-                disabled={isVerified}
               />
-              {!isVerified && (
-                <button
-                  type="button"
-                  onClick={handleVerifyTelegramId}
-                  disabled={verifying || !formData.telegram_id}
-                  style={{
-                    padding: "10px 16px",
-                    backgroundColor: "#007bff",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "4px",
-                    cursor: verifying || !formData.telegram_id ? "not-allowed" : "pointer",
-                    opacity: verifying || !formData.telegram_id ? 0.6 : 1,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {verifying ? "Sending..." : "Verify"}
-                </button>
-              )}
-            </div>
-            {isVerified && (
-              <div style={{ marginTop: "8px", color: "#28a745", fontSize: "14px" }}>
-                ✓ Telegram ID verified
-              </div>
-            )}
-            {verificationSent && !isVerified && (
-              <div style={{ marginTop: "8px" }}>
-                <p style={{ fontSize: "14px", color: "#666", marginBottom: "8px" }}>
-                  Verification code sent! Check your Telegram.
-                </p>
-                {botLink && (
-                  <a
-                    href={botLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      color: "#007bff",
-                      textDecoration: "none",
-                      fontSize: "14px",
-                    }}
-                  >
-                    Open Telegram Bot →
-                  </a>
-                )}
-              </div>
             )}
           </div>
 
-          {verificationSent && !isVerified && (
+          {isRegistering && verificationSent && !isVerified && (
             <div className="form-group">
               <label htmlFor="verificationCode">Verification Code *</label>
               <div style={{ display: "flex", gap: "8px" }}>
@@ -359,7 +376,11 @@ function Login({ onLogin,user }) {
               onClick={() => {
                 setIsRegistering(!isRegistering);
                 setError("");
-                setFormData({ telegram_id: "", password: "", name: "", email: "" });
+                // Reset all form data and verification state
+                setFormData({ telegram_id: "", password: "", name: "", email: "", verification_code: "" });
+                setIsVerified(false);
+                setVerificationSent(false);
+                setBotLink("");
               }}
             >
               {isRegistering ? "Login" : "Register"}

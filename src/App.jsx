@@ -2,6 +2,8 @@ import { HashRouter,Routes, Route } from "react-router-dom";
 import { useState } from "react";
 import Login from "./components/Login";
 import UserDashboard from "./components/UserDashboard";
+import DatabasePage from "./components/DatabasePage";
+import HistoryPage from "./components/HistoryPage";
 
 function App() {
   const [user, setUser] = useState(JSON.parse(localStorage.getItem("user")) || null);
@@ -38,6 +40,26 @@ function App() {
         element={
           currentUser ? (
             <UserDashboard user={currentUser} onLogout={handleLogout} />
+          ) : (
+            <Login onLogin={handleLogin} user={user} />
+          )
+        }
+      />
+      <Route
+        path="/database"
+        element={
+          currentUser ? (
+            <DatabasePage user={currentUser} />
+          ) : (
+            <Login onLogin={handleLogin} user={user} />
+          )
+        }
+      />
+      <Route
+        path="/history"
+        element={
+          currentUser ? (
+            <HistoryPage user={currentUser} />
           ) : (
             <Login onLogin={handleLogin} user={user} />
           )

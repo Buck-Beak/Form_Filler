@@ -11,22 +11,26 @@
 ### **Technology Stack**
 
 #### Frontend
+
 - **React 18.2.0** - UI framework
 - **React Router DOM 7.11.0** - Client-side routing
 - **Vite 5.1.6** - Build tool and dev server
 - **Electron 30.5.1** - Desktop application framework
 
 #### Backend
+
 - **Express.js 4.22.1** - REST API server
 - **MongoDB with Mongoose 9.1.1** - Database and ODM
 - **Node.js** - Runtime environment
 
 #### Authentication & Security
+
 - **JWT (jsonwebtoken 9.0.3)** - Token-based authentication
 - **bcrypt 6.0.0** - Password hashing
 - **node-telegram-bot-api 0.67.0** - Telegram bot integration
 
 #### Additional Tools
+
 - **CORS** - Cross-origin resource sharing
 - **dotenv** - Environment variable management
 - **better-sqlite3** - Local database (for Electron storage)
@@ -76,6 +80,7 @@ standalone_app/
 ### 1. **User Authentication System**
 
 #### Registration
+
 - User registration with:
   - Telegram ID (unique identifier)
   - Full Name
@@ -85,12 +90,14 @@ standalone_app/
 - Automatic password hashing and storage
 
 #### Login
+
 - Login with Telegram ID and password
 - JWT token generation (3-day expiration)
 - Token stored in localStorage
 - Automatic session persistence
 
 #### Security Features
+
 - Password hashing with bcrypt (salt rounds: 10)
 - JWT-based authentication
 - Protected routes with localStorage checks
@@ -101,6 +108,7 @@ standalone_app/
 ### 2. **Telegram ID Verification System**
 
 #### Verification Flow
+
 1. User enters Telegram ID
 2. Clicks "Verify" button
 3. System generates 6-digit verification code
@@ -112,6 +120,7 @@ standalone_app/
 9. Verification status stored in database
 
 #### Features
+
 - **Real-time verification** via Telegram bot
 - **6-digit code generation** (random)
 - **10-minute expiration** for security
@@ -120,6 +129,7 @@ standalone_app/
 - **Error handling** for invalid IDs or expired codes
 
 #### API Endpoints
+
 - `POST /api/verification/initiate` - Send verification code
 - `POST /api/verification/verify` - Verify entered code
 - `GET /api/verification/status/:telegram_id` - Check verification status
@@ -129,6 +139,7 @@ standalone_app/
 ### 3. **User Dashboard**
 
 #### Features
+
 - **Profile Display**
   - Telegram ID
   - Full Name
@@ -151,6 +162,7 @@ standalone_app/
 ### 4. **Database Models**
 
 #### User Model
+
 ```javascript
 {
   telegram_id: String (unique, required),
@@ -163,6 +175,7 @@ standalone_app/
 ```
 
 #### Verification Model
+
 ```javascript
 {
   telegram_id: String (indexed, required),
@@ -179,11 +192,13 @@ standalone_app/
 ## 🔌 API Endpoints
 
 ### User Endpoints (`/api/user`)
+
 - `POST /register` - Register new user
 - `POST /login` - User login
 - `GET /:telegram_id` - Get user by Telegram ID
 
 ### Verification Endpoints (`/api/verification`)
+
 - `POST /initiate` - Initiate verification (send code)
 - `POST /verify` - Verify code
 - `GET /status/:telegram_id` - Get verification status
@@ -212,6 +227,7 @@ TELEGRAM_BOT_USERNAME=your_bot_username
 ```
 
 ### Getting Telegram Bot Token
+
 1. Open Telegram and search for `@BotFather`
 2. Send `/newbot` command
 3. Follow instructions to create bot
@@ -223,6 +239,7 @@ TELEGRAM_BOT_USERNAME=your_bot_username
 ## 🚀 Development Setup
 
 ### Prerequisites
+
 - Node.js (v16+)
 - MongoDB (running locally or cloud instance)
 - Telegram account for bot creation
@@ -230,11 +247,13 @@ TELEGRAM_BOT_USERNAME=your_bot_username
 ### Installation Steps
 
 1. **Install Dependencies**
+
    ```bash
    npm install
    ```
 
 2. **Backend Setup**
+
    ```bash
    cd backend
    npm install
@@ -250,10 +269,11 @@ TELEGRAM_BOT_USERNAME=your_bot_username
    ```
    This runs:
    - Frontend dev server (Vite) on `http://localhost:5173`
-   - Electron app window
+   - Electron app window `http://localhost:5000`
    - Backend server on `http://localhost:3000`
 
 ### Available Scripts
+
 - `npm run dev` - Start development (frontend + Electron)
 - `npm run dev:frontend` - Start Vite dev server only
 - `npm run dev:electron` - Start Electron app only
@@ -293,6 +313,7 @@ TELEGRAM_BOT_USERNAME=your_bot_username
 ## 📱 User Interface
 
 ### Login/Registration Page
+
 - Clean, modern design
 - Toggle between Login and Registration
 - Real-time form validation
@@ -301,6 +322,7 @@ TELEGRAM_BOT_USERNAME=your_bot_username
 - Loading states
 
 ### User Dashboard
+
 - Professional card-based layout
 - User profile information grid
 - Responsive design
@@ -311,6 +333,7 @@ TELEGRAM_BOT_USERNAME=your_bot_username
 ## 🔄 Data Flow
 
 ### Registration Flow
+
 1. User enters Telegram ID → Click "Verify"
 2. Backend generates code → Sends via Telegram bot
 3. User receives code → Enters in app
@@ -320,12 +343,14 @@ TELEGRAM_BOT_USERNAME=your_bot_username
 7. Frontend stores token → Navigates to dashboard
 
 ### Login Flow
+
 1. User enters Telegram ID and password
 2. Backend validates credentials
 3. Backend generates JWT token
 4. Frontend stores token → Navigates to dashboard
 
 ### Dashboard Flow
+
 1. Component loads → Checks localStorage for user
 2. Fetches user details from API
 3. Displays user information
@@ -336,16 +361,19 @@ TELEGRAM_BOT_USERNAME=your_bot_username
 ## 🗄️ Data Storage
 
 ### MongoDB (Primary Database)
+
 - User accounts
 - Verification codes
 - Authentication tokens (via JWT)
 
 ### Local Storage (Electron)
+
 - User session data
 - JWT tokens
 - User preferences
 
 ### File System (Electron)
+
 - Local JSON storage for user data
 - Located in Electron's `userData` directory
 
@@ -370,16 +398,19 @@ TELEGRAM_BOT_USERNAME=your_bot_username
 ## 📦 Build & Distribution
 
 ### Production Build
+
 ```bash
 npm run build
 ```
 
 This creates:
+
 - Optimized React bundle in `dist/`
 - Electron build in `dist-electron/`
 - Executable in `release/` (Windows: `.exe`)
 
 ### Electron Builder
+
 - Configured in `electron-builder.json5`
 - Creates platform-specific installers
 - Auto-update support configured
@@ -444,4 +475,3 @@ This creates:
 **Last Updated:** Based on current codebase state
 **Version:** 0.0.0
 **Status:** Development/Production Ready
-

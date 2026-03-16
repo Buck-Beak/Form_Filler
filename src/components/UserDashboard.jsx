@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import "./UserDashboard.css";
 
 function UserDashboard({ user, onLogout }) {
@@ -6,6 +7,7 @@ function UserDashboard({ user, onLogout }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const baseURL = "http://localhost:3000";
+  const navigate = useNavigate();
 
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
@@ -51,6 +53,10 @@ function UserDashboard({ user, onLogout }) {
     fetchUserDetails();
   }, [user?.telegram_id]);
 
+  const handleDatabaseClick = () => {
+    navigate("/database");
+  };
+
   if (loading) {
     return (
       <div className="user-dashboard">
@@ -66,9 +72,17 @@ function UserDashboard({ user, onLogout }) {
           <h1>Welcome to Form Filler</h1>
           <p className="welcome-text">Hello, {userDetails?.name || userDetails?.telegram_id || "User"}!</p>
         </div>
-        <button onClick={onLogout} className="logout-btn">
-          Logout
-        </button>
+        <div className="dashboard-buttons">
+          <button onClick={handleDatabaseClick} className="logout-btn">
+            Database
+          </button>
+          <button onClick={() => navigate("/history")} className="logout-btn">
+            History
+          </button>
+          <button onClick={onLogout} className="logout-btn">
+            Logout
+          </button>
+        </div>
       </header>
 
       <div className="dashboard-content">
