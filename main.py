@@ -13,6 +13,7 @@ from browser_utils import launch_browser
 from form_extractor import extract_form_fields
 from field_classifier import classify_fields_with_gemini
 from form_filler import autofill_form
+from generate_form_url import generate_form_url
 from document_processor import DocumentProcessor
 
 # ── Load forms DB and users DB ──
@@ -201,7 +202,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.message.from_user.id
     user_text = update.message.text
     chat_id = update.message.chat_id
-    url, form_key = get_form_url(user_text)
+    url, form_key = await generate_form_url(user_text,gemini_model)
     if not url:
         await update.message.reply_text("❌ Form not found in my database.")
         return
@@ -274,6 +275,29 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         classified = classify_fields_with_gemini(fields, gemini_model)
         print(f"\n🤖 Classified {len(classified)} fields")
         filled_count = await autofill_form(page, classified, user_data['extracted_fields'])
+        
+        # ========== SEND FORM FILL DETAILS TO STANDALONE APP ==========
+        try:
+            form_fill_data = {
+                "telegram_id": request['telegram_id'],
+                "form_name": form_key,
+                "filled_fields": filled_count,
+                "timestamp": time.time(),
+                "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "form_url": url
+            }
+            
+            # Send to standalone app
+            response = requests.post("http://localhost:5000/form-fill", json=form_fill_data, timeout=5)
+            
+            if response.status_code == 200:
+                print(f"✅ Form fill details sent to standalone app: {form_fill_data}")
+            else:
+                print(f"⚠️ Failed to send form fill details: {response.status_code}")
+                
+        except Exception as e:
+            print(f"⚠️ Error sending form fill details: {e}")
+        
         await context.bot.send_message(
             chat_id=request["chat_id"],
             text=f"✅ Form auto-filled!\n"
