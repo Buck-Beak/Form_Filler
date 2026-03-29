@@ -55,35 +55,49 @@ class NavigationAgent:
         self.visited_urls = set()  # URLs visited in current crawl to avoid loops
         self.is_paused = False     # Flag for human interaction pause
         self.last_known_url = None # Tracking for "Resume" detection
+        
+        # PERSISTENT MEMORY: URL -> Set of element identifiers that led to dead ends
+        self.dead_end_memory: Dict[str, set] = {}
 
     async def _think(self, user_intent: str, elements: List[Dict[str, Any]]) -> str:
         """Explicit reasoning step using Gemini to analyze the page and plan next move."""
-        await self.visual.show_thinking("Analyzing page state...")
-        
-        # Prepare context
-        element_summary = "\n".join([
-            f"- [{e['type']}] {e['text']} (Priority: {e['priority']:.1f})"
-            for e in elements[:10]
-        ])
-        
-        prompt = (
-            f"You are the Navigation Agent. Current Goal: {user_intent}\n"
-            f"Current Page: {await self.page.title()}\n"
-            f"URL: {self.page.url}\n\n"
-            f"Top Elements Detected:\n{element_summary}\n\n"
-            "TASK: Describe your current 'thought' about this page in one concise sentence (max 15 words).\n"
-            "Focus on what you see and what you are looking for next.\n"
-            "THOUGHT:"
-        )
-        
         try:
+            if not self.model: return "Analyzing page layout."
+            
+            # Quota Check / Safety Shortcut: If priority is already high, skip thinking
+            if elements and elements[0].get('priority', 0) >= 2.0:
+                print("[NAV] _think: skipping due to high priority shortcut.")
+                return "Heuristic match found. Skipping AI thought."
+
+            await self.visual.show_thinking("Analyzing page state...")
+            
+            # Prepare context
+            element_summary = "\n".join([
+                f"- [{e['type']}] {e['text']} (Priority: {e['priority']:.1f})"
+                for e in elements[:10]
+            ])
+            
+            prompt = (
+                f"You are the Navigation Agent. Current Goal: {user_intent}\n"
+                f"Current Page: {await self.page.title()}\n"
+                f"URL: {self.page.url}\n\n"
+                f"Top Elements Detected:\n{element_summary}\n\n"
+                "TASK: Describe your current 'thought' about this page in one concise sentence (max 15 words).\n"
+                "Focus on what you see and what you are looking for next.\n"
+                "THOUGHT:"
+            )
+            
             resp = self.model.generate_content(prompt)
             thought = (resp.text or "Analyzing available links to find the application form.").strip()
             thought = thought.replace('"', '').replace("'", "") # Clean up
             await self.visual.add_thought(thought)
             return thought
         except Exception as e:
-            fallback = "Analyzing layout to determine the best path to the form."
+            if "429" in str(e) or "quota" in str(e).lower():
+                print("[NAV] _think: Quota hit, skipping AI thought.")
+                fallback = "AI rate limited. Using local heuristic selection."
+            else:
+                fallback = "Analyzing layout to determine the best path to the form."
             await self.visual.add_thought(fallback)
             return fallback
 
@@ -103,16 +117,25 @@ class NavigationAgent:
                 return True, self.page.url, "Success from memory"
 
         try:
-            await self.page.goto(start_url, wait_until="domcontentloaded", timeout=30000)
-            await asyncio.sleep(2)
+            if self._normalize_url(self.page.url) != self._normalize_url(start_url):
+                print(f"[NAV] Navigating to start URL: {start_url}")
+                await self.page.goto(start_url, wait_until="domcontentloaded", timeout=30000)
+                await asyncio.sleep(2)
+            else:
+                print(f"[NAV] Already on {start_url}. Skipping initial navigation.")
         except Exception as e:
             return False, start_url, f"Initial load failed: {e}"
 
         attempts = 0
+        last_dom_length = 0
+        
         while attempts < max_attempts:
             attempts += 1
             current_url = self.page.url
             self.last_known_url = current_url
+            
+            # Get current DOM length for loop detection
+            current_dom_length = len(await self.page.content())
             
             # 1. LOOK & DETECT (React to page state)
             state = await self._detect_page_state()
@@ -133,6 +156,11 @@ class NavigationAgent:
                     await self._wait_for_human("Login failed. Please login manually or provide credentials.")
                 continue
 
+            if state == "dashboard" and attempts == 1:
+                await self.visual.add_thought("Dashboard/Menu detected.")
+                await self._wait_for_human("Landing page detected. Please click the desired button or test case manually.")
+                continue
+
             # 2. ANALYZE & THINK
             elements = await self._extract_smart_elements(user_intent)
             if not elements:
@@ -140,26 +168,43 @@ class NavigationAgent:
                     continue
                 return False, current_url, "Exhausted all paths"
 
-            # Filter out elements already tried from this URL in the nav_stack
+            # Filter out tried elements (including persistent dead ends)
             tried_indices = self._get_tried_indices(current_url)
-            available = [e for i, e in enumerate(elements) if i not in tried_indices]
+            available = [e for i, e in enumerate(elements) if e['index'] not in tried_indices]
             
             if not available:
+                print(f"[NAV] All {len(elements)} elements at this URL already tried/dead-end.")
                 if await self._backtrack():
                     continue
                 return False, current_url, "Exhausted links at this node"
 
-            await self._think(user_intent, available)
-            
+            # API QUOTA MITIGATION: Shortcut for high-confidence match
+            # If top available element has priority >= 2.0, click it immediately
+            if available[0]['priority'] >= 2.0:
+                selected = available[0]
+                print(f"[NAV] High confidence match (score {selected['priority']}): '{selected['text']}'. Skipping AI calls.")
+                await self.visual.add_thought(f"High confidence match: '{selected['text']}'. Proceeding immediately.")
+            else:
+                # Normal AI flow
+                try:
+                    await self._think(user_intent, available)
+                    choice_idx = await self._choose_best_element(user_intent, available)
+                    if choice_idx is None:
+                        if await self._backtrack(): continue
+                        return False, current_url, "No relevant links"
+                    selected = available[choice_idx]
+                except Exception as e:
+                    if "429" in str(e) or "quota" in str(e).lower():
+                        print("[NAV] API Quota Hit - Falling back to local heuristics.")
+                        await self.visual.add_thought("API rate limit reached. Using internal heuristics...")
+                        selected = available[0] # Best scored element
+                    else:
+                        print(f"[NAV] AI selection error: {e}")
+                        selected = available[0]
+
             # 3. ACT
-            choice_idx_in_available = await self._choose_best_element(user_intent, available)
-            if choice_idx_in_available is None:
-                if await self._backtrack(): continue
-                return False, current_url, "No relevant links"
-            
-            selected = available[choice_idx_in_available]
-            # Map choice back to original index in 'elements'
-            original_idx = elements.index(selected)
+            # Use persistent element index from the JS extraction
+            original_idx = selected['index']
             
             # Record choice in stack before acting
             self._push_stack(current_url, original_idx)
@@ -170,9 +215,17 @@ class NavigationAgent:
             if success:
                 await asyncio.sleep(2)
                 self.visited_urls.add(current_url)
+                
+                # LOOP PREVENTION: If URL and content didn't change, it's likely a dead-end click
+                new_url = self.page.url
+                new_dom_length = len(await self.page.content())
+                if new_url == current_url and abs(new_dom_length - current_dom_length) < 10:
+                    print(f"[NAV] Loop detected: Element {original_idx} did not change page state. Marking as dead end.")
+                    if current_url not in self.dead_end_memory:
+                        self.dead_end_memory[current_url] = set()
+                    self.dead_end_memory[current_url].add(original_idx)
             else:
                 await self.visual.add_thought("Click failed, trying next option.")
-                # Current index already recorded in stack, loop will pick next
                 
         return False, self.page.url, "Max attempts reached"
     
@@ -271,7 +324,7 @@ class NavigationAgent:
     # 
 
     async def _detect_page_state(self) -> str:
-        """Classify current page as Form, Login, CAPTCHA, or Normal."""
+        """Classify current page as Form, Login, CAPTCHA, Dashboard or Normal."""
         if await self._has_form():
             return "form"
         
@@ -283,11 +336,40 @@ class NavigationAgent:
         if await self._is_login_page():
             return "login"
             
+        if await self._is_dashboard():
+            return "dashboard"
+
         block_msg = await self._is_blocked()
         if block_msg:
             print(f"[NAV] Blocked: {block_msg}")
             
         return "normal"
+
+    async def _is_dashboard(self) -> bool:
+        """Detect if page is a choice menu or landing dashboard."""
+        try:
+            title = (await self.page.title()).lower()
+            url = self.page.url.lower()
+            
+            # Keywords indicating a menu/dashboard
+            dashboard_keywords = [
+                "testbed", "dashboard", "index", "welcome", "central", 
+                "choice", "select", "portal", "home"
+            ]
+            
+            # Check title and URL
+            is_keyword_match = any(kw in title or kw in url for kw in dashboard_keywords)
+            
+            # Additional heuristic: Many distinct buttons/links with different destinations 
+            # and no clear form is a sign of a dashboard.
+            if is_keyword_match:
+                # If it's a known form starting URL, we check if it's the very first load
+                # (handled in maps_to_form)
+                return True
+                
+            return False
+        except:
+            return False
 
     async def _handle_captcha_loop(self):
         """Watcher loop: Notify user and poll every 5s until CAPTCHA is gone."""
@@ -353,7 +435,10 @@ class NavigationAgent:
             await asyncio.sleep(2)
 
     def _get_tried_indices(self, url: str) -> List[int]:
-        return [item[1] for item in self.nav_stack if item[0] == url]
+        stack_indices = [item[1] for item in self.nav_stack if item[0] == url]
+        # Merge with persistent dead-end memory
+        dead_indices = self.dead_end_memory.get(url, [])
+        return list(set(stack_indices) | set(dead_indices))
 
     def _push_stack(self, url: str, element_idx: int):
         self.nav_stack.append((url, element_idx))
@@ -365,14 +450,19 @@ class NavigationAgent:
             
         await self.visual.add_thought("Reached a dead end. Backtracking...")
         try:
-            # Pop the current URL
+            # Pop the current URL AND index, but RECORD it in dead_end_memory first
             if self.nav_stack:
-                self.nav_stack.pop()
+                url, idx = self.nav_stack.pop()
+                if url not in self.dead_end_memory:
+                    self.dead_end_memory[url] = set()
+                self.dead_end_memory[url].add(idx)
+                print(f"[NAV] Backtracking: Recorded dead-end at index {idx} for {url}")
                 
             await self.page.go_back()
             await asyncio.sleep(2)
             return True
-        except:
+        except Exception as e:
+            print(f"[NAV] Backtrack error: {e}")
             return False
 
     async def _is_login_page(self) -> bool:
@@ -400,65 +490,51 @@ class NavigationAgent:
         return None
 
     async def _has_form(self) -> bool:
-        """Strictly check if page has an actual form with input fields."""
+        """Strictly check if page or any of its frames has an actual form with input fields."""
         try:
-            result = await self.page.evaluate(
-                """
-                () => {
-                    // STRICT: Only count actual fillable form fields
-                    const inputs = Array.from(document.querySelectorAll(
-                        'input[type="text"], input[type="email"], input[type="password"], ' +
-                        'input[type="number"], input[type="date"], input[type="tel"], ' +
-                        'textarea, select'
-                    ))
-                    .filter(el => {
-                        const rect = el.getBoundingClientRect();
-                        const visible = rect.width > 0 && rect.height > 0;
-                        const style = window.getComputedStyle(el);
-                        const displayed = style.display !== 'none' && style.visibility !== 'hidden';
-                        return visible && displayed;
-                    });
+            # Check all frames recursively
+            for frame in self.page.frames:
+                try:
+                    result = await frame.evaluate(
+                        """
+                        () => {
+                            const inputs = Array.from(document.querySelectorAll(
+                                'input[type="text"], input[type="email"], input[type="password"], ' +
+                                'input[type="number"], input[type="date"], input[type="tel"], ' +
+                                'textarea, select'
+                            ))
+                            .filter(el => {
+                                const rect = el.getBoundingClientRect();
+                                const visible = rect.width > 0 && rect.height > 0;
+                                const style = window.getComputedStyle(el);
+                                const displayed = style.display !== 'none' && style.visibility !== 'hidden';
+                                return visible && displayed;
+                            });
+                            
+                            const forms = document.querySelectorAll('form');
+                            const formContainers = document.querySelectorAll(
+                                '[class*="form"], [class*="Form"], [id*="form"], [id*="Form"], ' +
+                                '[data-testid*="form"], [role="form"]'
+                            );
+                            
+                            return {
+                                found: inputs.length >= 1 || forms.length >= 1 || formContainers.length > 0,
+                                inputCount: inputs.length,
+                                formCount: forms.length,
+                                formContainers: formContainers.length
+                            };
+                        }
+                        """
+                    )
                     
-                    // Count actual form elements
-                    const forms = document.querySelectorAll('form');
-                    
-                    // Check for form-like containers (common in SPA/React apps)
-                    const formContainers = document.querySelectorAll(
-                        '[class*="form"], [class*="Form"], [id*="form"], [id*="Form"], ' +
-                        '[data-testid*="form"], [role="form"]'
-                    );
-                    
-                    // REQUIRE at least 1 visible input field OR 1 form element
-                    // (relaxed from 2+ to handle single-field pages and SPA delays)
-                    const hasForm = inputs.length >= 1 || forms.length >= 1 || formContainers.length > 0;
-                    
-                    console.log('Form detection:', {
-                        inputs: inputs.length, 
-                        forms: forms.length,
-                        formContainers: formContainers.length,
-                        detected: hasForm
-                    });
-                    
-                    return {
-                        found: hasForm,
-                        inputCount: inputs.length,
-                        formCount: forms.length,
-                        formContainers: formContainers.length
-                    };
-                }
-                """
-            )
+                    if result.get("found", False):
+                        if frame != self.page.main_frame:
+                            print(f"[FormDetection] Found form in iframe: {frame.url}")
+                        return True
+                except:
+                    continue # Skip frames that might be cross-origin or inaccessible
             
-            has_form = result.get("found", False)
-            input_count = result.get("inputCount", 0)
-            form_containers = result.get("formContainers", 0)
-            
-            if has_form:
-                print(f"[FormDetection] Found form with {input_count} inputs, {form_containers} form containers")
-            else:
-                print(f"[FormDetection] No form detected (inputs: {input_count}, containers: {form_containers})")
-            
-            return has_form
+            return False
             
         except Exception as e:
             print(f"[NAV] Form detection error: {e}")
@@ -606,121 +682,136 @@ class NavigationAgent:
     
     async def _extract_smart_elements(self, user_intent: str, limit: int = 30) -> List[Dict[str, Any]]:
         """
-        Enhanced element extraction with better detection of clickable elements
-        Handles traditional links, buttons, and SPA elements
+        Enhanced element extraction with better detection of clickable elements.
+        Handles traditional links, buttons, and JS-based elements like divs with onclick.
         """
         print("[NAV] Extracting navigable elements...")
         
-        candidates: List[Dict[str, Any]] = []
-        
-        # Enhanced selectors covering more cases
-        element_groups = [
-            {
-                "selector": "a[href]",
-                "type": "link",
-                "priority_boost": 1.0
-            },
-            {
-                "selector": "button:not([disabled])",
-                "type": "button",
-                "priority_boost": 1.2
-            },
-            {
-                "selector": "[role='button']",
-                "type": "role-button",
-                "priority_boost": 1.1
-            },
-            {
-                "selector": "input[type='submit'], input[type='button']",
-                "type": "input-button",
-                "priority_boost": 1.0
-            },
-            {
-                "selector": "[data-testid], [data-test]",
-                "type": "test-element",
-                "priority_boost": 0.9
-            },
-            {
-                "selector": ".btn, .button, .mat-button, .v-btn",
-                "type": "css-button",
-                "priority_boost": 1.0
+        # Use evaluate to find elements that Playwright selectors might miss (e.g., onclick, cursor:pointer)
+        js_elements = await self.page.evaluate("""
+            () => {
+                const results = [];
+                const interactiveSelectors = [
+                    'a', 'button', '[role="button"]', 'input[type="submit"]', 
+                    'input[type="button"]', '[onclick]', '.btn', '.button'
+                ];
+                
+                const seen = new Set();
+                
+                const allInteractive = document.querySelectorAll(interactiveSelectors.join(','));
+                allInteractive.forEach((el, i) => {
+                    const rect = el.getBoundingClientRect();
+                    const style = window.getComputedStyle(el);
+                    const isVisible = rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+                    
+                    if (isVisible) {
+                        const text = (el.innerText || el.textContent || '').trim();
+                        if (text && text.length >= 2) {
+                            // Generate a relatively unique selector
+                            let selector = el.tagName.toLowerCase();
+                            if (el.id) selector += '#' + el.id;
+                            else if (el.className) selector += '.' + el.className.split(' ').join('.');
+                            
+                            results.push({
+                                text: text,
+                                tag: el.tagName.toLowerCase(),
+                                href: el.getAttribute('href') || '',
+                                onclick: el.hasAttribute('onclick'),
+                                selector: interactiveSelectors.join(','),
+                                css_index: i
+                            });
+                            seen.add(el);
+                        }
+                    }
+                });
+                console.log('Step 1 results:', results.length);
+                
+                // 2. Check for elements with 'cursor: pointer' (highly likely to be JS buttons)
+                document.querySelectorAll('div, span, li, p, section, article').forEach((el, i) => {
+                    if (seen.has(el)) return;
+                    const rect = el.getBoundingClientRect();
+                    const style = window.getComputedStyle(el);
+                    const isPointer = style.cursor === 'pointer';
+                    const isVisible = rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+                    
+                    if (isPointer && isVisible) {
+                        const text = (el.innerText || el.textContent || '').trim();
+                        if (text && text.length >= 2 && text.length < 500) {
+                            results.push({
+                                text: text,
+                                tag: el.tagName.toLowerCase(),
+                                href: '',
+                                onclick: el.hasAttribute('onclick'),
+                                selector: 'div, span, li, p, section, article',
+                                css_index: i
+                            });
+                            seen.add(el);
+                        }
+                    }
+                });
+                console.log('Total JS results:', results.length);
+                
+                return results;
             }
-        ]
-        
-        # Form-related keywords (high priority)
+        """)
+
+        candidates = []
         form_indicators = [
             "apply", "application", "register", "registration", "form", "exam",
             "signup", "sign up", "join", "participate", "enroll", "admission",
             "fill", "start", "begin", "proceed", "next", "continue", "submit",
-            "new", "fresh", "file", "upload", "verify", "create", "open"
+            "new", "fresh", "file", "upload", "verify", "create", "open", "portal", "entrance"
         ]
-        
-        # Skip these (low priority)
         skip_terms = [
             "privacy", "terms", "cookie", "faq", "help", "support",
             "footer", "contact", "about", "back", "logout", "exit",
             "close", "cancel", "share", "print", "download", "search"
         ]
-        
-        for group in element_groups:
-            try:
-                locator = self.page.locator(group["selector"] + ":visible")
-                count = min(await locator.count(), 100)
-                
-                for i in range(count):
-                    try:
-                        handle = locator.nth(i)
-                        
-                        # Get element properties
-                        text = _normalize_text(await handle.inner_text())
-                        href = await handle.get_attribute("href") or ""
-                        
-                        if not text or len(text) < 2:
-                            continue
-                        
-                        lower_text = text.lower()
-                        
-                        # Skip irrelevant elements
-                        if any(term in lower_text for term in skip_terms):
-                            continue
-                        
-                        # Calculate priority based on keywords
-                        is_form_related = any(term in lower_text for term in form_indicators)
-                        base_priority = 2.0 if is_form_related else 1.0
-                        priority = base_priority * group["priority_boost"]
-                        
-                        # Check if this element already exists (by text)
-                        exists = any(c["text"].lower() == text.lower() for c in candidates)
-                        if exists:
-                            continue
-                        
-                        candidates.append({
-                            "index": i,
-                            "text": text[:100],
-                            "href": href,
-                            "type": group["type"],
-                            "priority": priority,
-                            "is_form_link": is_form_related,
-                            "selector": group["selector"]
-                        })
-                        
-                        if len(candidates) >= limit * 2:  # Get more candidates initially
-                            break
-                    except Exception as e:
-                        # Element might be stale or hidden
-                        continue
-            except Exception as e:
-                print(f"[NAV] Error with selector {group['selector']}: {e}")
+
+        seen_texts: Set[str] = set()
+        for i, el in enumerate(js_elements):
+            text = el["text"]
+            # Deduplicate by text (normalized)
+            norm_text = _normalize_text(text)
+            if not norm_text or norm_text in seen_texts:
                 continue
-        
-        # Sort by priority (highest first)
+            seen_texts.add(norm_text)
+            
+            lower_text = norm_text.lower()
+            
+            if any(term in lower_text for term in skip_terms):
+                continue
+                
+            is_form_related = any(term in lower_text for term in form_indicators)
+            priority = 2.0 if is_form_related else 1.0
+            
+            # Boost JS buttons and onclick elements
+            if el["onclick"] or el["tag"] == "button":
+                priority *= 1.2
+            
+            candidates.append({
+                "index": el["css_index"], 
+                "text": text[:100],
+                "href": el["href"],
+                "type": el["tag"],
+                "priority": priority,
+                "is_form_link": is_form_related,
+                "selector": el["selector"] 
+            })
+
+        # Sort by priority
         candidates.sort(key=lambda x: x["priority"], reverse=True)
-        
-        # Return top candidates
         top_candidates = candidates[:limit]
-        print(f"[NAV]  Found {len(top_candidates)} navigable elements (from {len(candidates)} total)")
         
+        print(f"[NAV] Found {len(top_candidates)} unique navigable elements (from {len(candidates)} total)")
         return top_candidates
+
+    def reset_navigation_state(self):
+        """Clears navigation history and dead-end memory for a fresh start on the same page."""
+        self.nav_stack = []
+        self.visited_urls = set()
+        self.dead_end_memory = {}
+        print("[NAV] Navigation state reset.")
 
     async def _extract_links(self, limit: int = 30) -> List[Dict[str, Any]]:
         # Try multiple selectors for better coverage (including SVG, image buttons, etc.)
@@ -791,8 +882,9 @@ class NavigationAgent:
         return candidates[:limit]
     
     async def _choose_best_element(self, user_intent: str, elements: List[Dict[str, Any]]) -> Optional[int]:
-        """AI selection with thought preservation."""
+        """AI selection with thought preservation and quota/retry handling."""
         if not elements: return None
+        if not self.model: return 0
         
         # Log to thought console
         await self.visual.add_thought(f"Choosing from {len(elements)} possible pathways...")
@@ -810,16 +902,36 @@ class NavigationAgent:
             "Answer:"
         )
         
-        try:
-            resp = self.model.generate_content(prompt)
-            match = re.search(r'-?\d+', resp.text)
-            if match:
-                idx = int(match.group())
-                if 0 <= idx < len(elements):
-                    return idx
-        except: pass
-        return 0 # Fallback
+        # Retry with backoff for 429s
+        for attempt in range(3):
+            try:
+                resp = self.model.generate_content(prompt)
+                match = re.search(r'-?\d+', resp.text)
+                if match:
+                    idx = int(match.group())
+                    if 0 <= idx < len(elements):
+                        return idx
+                return 0 # Default if no number found
+            except Exception as e:
+                err_str = str(e).lower()
+                if "429" in err_str or "quota" in err_str or "resource" in err_str:
+                    if attempt < 2:
+                        wait_time = (attempt + 1) * 2
+                        print(f"[NAV] Rate limited (429). Retrying in {wait_time}s...")
+                        await asyncio.sleep(wait_time)
+                        continue
+                    else:
+                        print("[NAV] choice_best_element: Quota exhausted after retries. Falling back.")
+                        raise # Let maps_to_form handle the fallback
+                print(f"[NAV] AI selection error: {e}")
+                return 0
+        return 0
     
+    def _normalize_url(self, url: str) -> str:
+        """Strip trailing slash and fragment for comparison."""
+        if not url: return ""
+        return url.rstrip("/").split("#")[0].split("?")[0]
+
     async def _click_element_safe(self, element_info: Dict) -> bool:
         """Safely click an element with visuals and multiple fallbacks."""
         selector = element_info.get("selector")

@@ -144,7 +144,50 @@ class LoginHandler:
     # Auto-fill
     # ─────────────────────────────────────────────────────────────────────────
 
-        return filled_username and filled_password
+    async def auto_fill_login(self, page: Page, credentials: Dict[str, str]) -> bool:
+        """Find and fill username and password fields."""
+        try:
+            username = credentials.get("username", "")
+            password = credentials.get("password", "")
+            
+            if not username or not password:
+                return False
+
+            # Find username field
+            user_selectors = [
+                'input[id*="user" i]', 'input[name*="user" i]',
+                'input[type="text"]', 'input[type="email"]', 'input[type="tel"]',
+                'input[name*="login" i]', 'input[id*="login" i]',
+                'input[placeholder*="user" i]', 'input[placeholder*="email" i]',
+                'input[placeholder*="login" i]'
+            ]
+            filled_username = False
+            for sel in user_selectors:
+                el = page.locator(sel).first
+                if await el.count() > 0 and await el.is_visible():
+                    await el.fill(username)
+                    filled_username = True
+                    print(f"[LOGIN] [OK] Filled username via: {sel}")
+                    break
+            
+            # Find password field
+            pass_selectors = [
+                'input[type="password"]', 'input[name*="pass" i]', 'input[id*="pass" i]',
+                'input[placeholder*="pass" i]'
+            ]
+            filled_password = False
+            for sel in pass_selectors:
+                el = page.locator(sel).first
+                if await el.count() > 0 and await el.is_visible():
+                    await el.fill(password)
+                    filled_password = True
+                    print(f"[LOGIN] [OK] Filled password via: {sel}")
+                    break
+                    
+            return filled_username and filled_password
+        except Exception as e:
+            print(f"[LOGIN] Auto-fill error: {e}")
+            return False
 
     async def handle_remember_me(self, page: Page):
         """Find and click 'Remember Me' or 'Stay Signed In' checkboxes."""
@@ -154,8 +197,11 @@ class LoginHandler:
                 'input[type="checkbox"][id*="remember" i]',
                 'input[type="checkbox"][name*="stay" i]',
                 'input[type="checkbox"][id*="stay" i]',
+                'input[type="checkbox"][aria-label*="remember" i]',
                 'label:has-text("Remember") input',
                 'label:has-text("Stay signed in") input',
+                'div[role="checkbox"]:has-text("Remember")',
+                'span:has-text("Remember")',
             ]
             for sel in selectors:
                 el = page.locator(sel).first
@@ -163,8 +209,14 @@ class LoginHandler:
                     # Check if already checked
                     is_checked = await el.is_checked()
                     if not is_checked:
-                        await el.click()
-                        print(f"[LOGIN] ✅ Clicked 'Remember Me' via: {sel}")
+                        try:
+                            # Try standard check first
+                            await el.check(timeout=2000)
+                        except:
+                            # Fallback to force click if check fails
+                            await el.click(force=True)
+                        
+                        print(f"[LOGIN] [OK] Clicked 'Remember Me' via: {sel}")
                         return True
         except Exception as e:
             print(f"[LOGIN] Remember Me error: {e}")
@@ -203,13 +255,13 @@ class LoginHandler:
             parse_mode="Markdown",
         )
 
-        print(f"[LOGIN] ⏳ Waiting for credentials from Telegram (chat_id={chat_id})…")
+        print(f"[LOGIN] Waiting for credentials from Telegram (chat_id={chat_id})…")
 
         try:
             creds = await asyncio.wait_for(fut, timeout=300)  # 5 min
             return creds
         except asyncio.TimeoutError:
-            print("[LOGIN] ⏱️ Credential request timed out")
+            print("[LOGIN] Credential request timed out")
             self._pending_creds.pop(key, None)
             return None
 
@@ -257,13 +309,13 @@ class LoginHandler:
             parse_mode="Markdown",
         )
 
-        print(f"[LOGIN] ⏳ Waiting for OTP from Telegram (chat_id={chat_id})…")
+        print(f"[LOGIN] Waiting for OTP from Telegram (chat_id={chat_id})…")
 
         try:
             otp = await asyncio.wait_for(fut, timeout=300)
             return otp
         except asyncio.TimeoutError:
-            print("[LOGIN] ⏱️ OTP request timed out")
+            print("[LOGIN] OTP request timed out")
             self._pending_otp.pop(key, None)
             return None
 
@@ -285,20 +337,31 @@ class LoginHandler:
     async def _submit_login_form(self, page: Page) -> None:
         """Click the login/submit button or press Enter."""
         try:
-            btn = page.locator(
-                'button[type="submit"], input[type="submit"], '
-                'button:has-text("Login"), button:has-text("Sign In"), '
-                'button:has-text("Log In"), button:has-text("Submit")'
-            ).first
-            if await btn.count() > 0 and await btn.is_visible():
-                await btn.click()
-                print("[LOGIN] ✅ Login form submitted via button")
-                return
+            submit_selectors = [
+                'button[type="submit"]',
+                'input[type="submit"]',
+                'input[type="button"][value*="Login" i]',
+                'input[type="button"][value*="Sign In" i]',
+                'input[type="button"][value*="Submit" i]',
+                'button:has-text("Login")',
+                'button:has-text("Sign In")',
+                'button:has-text("Log In")',
+                'button:has-text("Submit")',
+                'button:has-text("Continue")',
+                'a.btn:has-text("Login")',
+                '[role="button"]:has-text("Login")'
+            ]
+            for sel in submit_selectors:
+                btn = page.locator(sel).first
+                if await btn.count() > 0 and await btn.is_visible():
+                    await btn.click()
+                    print(f"[LOGIN] [OK] Login form submitted via button: {sel}")
+                    return
         except Exception as e:
             print(f"[LOGIN] Submit button error: {e}")
         # Fallback: Enter key
         await page.keyboard.press("Enter")
-        print("[LOGIN] ✅ Login form submitted via Enter key")
+        print("[LOGIN] [OK] Login form submitted via Enter key")
 
     # ─────────────────────────────────────────────────────────────────────────
     # Full pipeline
@@ -316,7 +379,7 @@ class LoginHandler:
           detect type → handle preferences → find/request credentials → fill → handle OTP → submit.
         """
         login_type = await self.detect_login_type(page)
-        print(f"[LOGIN] 🔐 Login type: {login_type}  |  URL: {url[:60]}")
+        print(f"[LOGIN] Login type: {login_type}  |  URL: {url[:60]}")
 
         if login_type == LoginType.NONE:
             return False, "Not a login page"
@@ -383,13 +446,13 @@ class LoginHandler:
             
             # 1. Did we successfully log in (URL changed significantly)?
             if page.url != start_url and "/login" not in page.url.lower():
-                print("[LOGIN] 🎉 URL changed. Likely successful login.")
+                print("[LOGIN] URL changed. Likely successful login.")
                 return True, "Login successful"
 
             # 2. Did a 2FA/OTP field appear?
             new_type = await self.detect_login_type(page)
             if new_type == LoginType.OTP:
-                print("[LOGIN] 📱 2FA OTP detected. Starting dual-entry monitor.")
+                print("[LOGIN] 2FA OTP detected. Starting dual-entry monitor.")
                 if self.bot:
                     await self.bot.send_message(
                         chat_id=chat_id,

@@ -373,30 +373,39 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = request["url"]
     form_key = request["form_key"]
 
-    # Try to fetch data from standalone app, fallback to users.json
-    user_data = None
+    # Always load base data from users.json for preferences
+    base_user_data = next((u for u in users_db if u["telegram_id"] == request["telegram_id"]), {})
+    
+    # Try to fetch data from standalone app (extracted fields)
+    extracted_data = None
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(f"http://localhost:5000/user/{request['telegram_id']}", timeout=aiohttp.ClientTimeout(total=3)) as resp:
                 if resp.status == 200:
-                    user_data = await resp.json()
-                    print("\n📥 RECEIVED FROM ELECTRON APP:", user_data)
+                    extracted_data = await resp.json()
+                    print("\n📥 RECEIVED FROM ELECTRON APP:", extracted_data)
     except Exception as e:
         print(f"⚠️ Standalone app not reachable: {e}")
-        print("📂 Falling back to users.json")
+        print("📂 Using only users.json")
     
-    # Fallback to users.json if server is unavailable
-    if not user_data:
-        user_data = next((u for u in users_db if u["telegram_id"] == request["telegram_id"]), None)
-        if not user_data:
-            await context.bot.send_message(
-                chat_id=request["chat_id"],
-                text="❌ Your user data is not in the database. Use /myid to check your registration status."
-            )
-            return
-        # Wrap in expected format if coming from users.json
-        if "extracted_fields" not in user_data:
-            user_data = {"extracted_fields": user_data}
+    # Merge preferences with extracted fields
+    # If server has "extracted_fields", use them. Otherwise use base_user_data.
+    if extracted_data and "extracted_fields" in extracted_data:
+        # Create a copy of base preferences
+        final_fields = base_user_data.copy()
+        # Update with extracted fields from server
+        final_fields.update(extracted_data["extracted_fields"])
+        user_data = {"extracted_fields": final_fields}
+    else:
+        # Fallback: wrap base_user_data
+        user_data = {"extracted_fields": base_user_data}
+
+    if not base_user_data and not extracted_data:
+        await context.bot.send_message(
+            chat_id=request["chat_id"],
+            text="❌ Your user data is not in the database. Use /myid to check your registration status."
+        )
+        return
 
     form_key = request["form_key"]
     await query.edit_message_text(

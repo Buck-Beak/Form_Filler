@@ -56,8 +56,57 @@ class SessionStorage:
         session_data['session_id'] = f"{session_data.get('user_intent', 'unknown')}_{int(datetime.now().timestamp())}"
         
         self.sessions.append(session_data)
+        self.deduplicate_sessions()
         self._save_sessions()
-        print(f"[SessionStorage] ✅ Saved session: {session_data['session_id']}")
+        print(f"[SessionStorage] ✅ Saved and deduplicated session: {session_data['session_id']}")
+    
+    def _get_path_signature(self, session: Dict) -> str:
+        """Create a unique signature for a navigation path"""
+        start_url = session.get('start_url', '')
+        intent = session.get('user_intent', '')
+        steps = session.get('steps_taken', [])
+        
+        # Path is defined by the sequence of URLs visited
+        path_urls = [step.get('url', '') for step in steps if step.get('url')]
+        path_string = "->".join(path_urls)
+        
+        return f"{start_url}|{intent}|{path_string}"
+
+    def deduplicate_sessions(self):
+        """Remove redundant sessions, keeping the best/most recent ones"""
+        if not self.sessions:
+            return
+            
+        unique_sessions = {}
+        
+        # Sort sessions by timestamp ascending so later ones overwrite earlier ones
+        # and successful ones are preferred
+        sorted_sessions = sorted(
+            self.sessions, 
+            key=lambda x: (x.get('timestamp', ''), x.get('success', False))
+        )
+        
+        for session in sorted_sessions:
+            sig = self._get_path_signature(session)
+            
+            # If we already have this path, prioritize success
+            if sig in unique_sessions:
+                existing = unique_sessions[sig]
+                if session.get('success') and not existing.get('success'):
+                    unique_sessions[sig] = session
+                elif session.get('success') == existing.get('success'):
+                    # Both same success status, keep the one with more fields filled or more recent
+                    if session.get('fields_filled_count', 0) >= existing.get('fields_filled_count', 0):
+                        unique_sessions[sig] = session
+            else:
+                unique_sessions[sig] = session
+        
+        original_count = len(self.sessions)
+        self.sessions = list(unique_sessions.values())
+        new_count = len(self.sessions)
+        
+        if original_count != new_count:
+            print(f"[SessionStorage] Deduplicated: {original_count} -> {new_count} sessions")
     
     def get_successful_paths(self, start_url: str, user_intent: str) -> List[Dict]:
         """Get successful navigation paths for similar intents"""

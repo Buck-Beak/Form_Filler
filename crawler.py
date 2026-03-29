@@ -83,10 +83,110 @@ class WebCrawler:
         )
 
         self.start_domain: str = ""
+        self.should_stop: bool = False
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Public entry point
+    # Public entry points
     # ─────────────────────────────────────────────────────────────────────────
+
+    async def monitor_and_react(
+        self,
+        start_url: str,
+        intent: str,
+        max_depth: int = 8,
+    ):
+        """
+        Persistent loop that stays on the page, fills forms when found,
+        and waits for DOM changes to trigger new navigation/filling.
+        """
+        self.start_domain = urlparse(start_url).netloc
+        await self.visual.inject_visual_styles()
+        
+        print(f"\n[Crawler] [Live] Starting Persistent Monitoring (Live Mode)")
+        print(f"[Crawler]    Target Intent: {intent}")
+        
+        # Initial navigation (if not already there)
+        if self._normalize_url(self.page.url) != self._normalize_url(start_url):
+            await self.page.goto(start_url)
+        
+        while not self.should_stop:
+            try:
+                # 1. Check if we are already on a form
+                if await self.nav_agent._has_form():
+                    print("[Crawler] [Live] Form detected on current page. Ready for filling.")
+                    await self.visual.add_thought("Form detected! Waiting for filling instructions...")
+                    # Note: Actual filling is handled by the main orchestrator/user
+                    # For now, we just signal that we found it.
+                else:
+                    # 2. Try to find the form
+                    print("[Crawler] [Live] No form found. Starting navigation search...")
+                    found, final_url, reason = await self.nav_agent.maps_to_form(
+                        self.page.url, intent, max_attempts=max_depth
+                    )
+                    
+                    if found:
+                        print(f"[Crawler] [Live] Successfully reached form: {final_url}")
+                    else:
+                        print(f"[Crawler] [Live] No form found yet: {reason}")
+                
+                # 3. Wait for DOM changes or user interaction
+                print("[Crawler] [Live] Monitoring for changes...")
+                await self.visual.add_thought("Monitoring for updates or new forms...")
+                
+                # Wait for either a significant DOM change or a period of time
+                changed = await self._wait_for_change(timeout=45)
+                
+                if changed:
+                    print("[Crawler] [Live] DOM change detected! Refreshing state...")
+                    await self.visual.add_thought("Page content changed. Re-evaluating...")
+                    # Wait more for stability
+                    await asyncio.sleep(2)
+                    self.nav_agent.reset_navigation_state()
+                
+                await asyncio.sleep(1) # Small breath
+                
+            except Exception as e:
+                err_msg = str(e)
+                print(f"[Crawler] [Live] Error in monitor loop: {err_msg}")
+                await asyncio.sleep(5)
+
+    async def _wait_for_change(self, timeout: int = 30) -> bool:
+        """
+        Uses MutationObserver to detect significant DOM changes.
+        Returns True if change detected, False if timeout reached.
+        """
+        return await self.page.evaluate(f"""
+            (timeoutSec) => {{
+                return new Promise((resolve) => {{
+                    let changed = false;
+                    const observer = new MutationObserver((mutations) => {{
+                        // Filter out minor changes (like the bot's own visual feedback)
+                        const significant = mutations.some(m => 
+                            !m.target.id?.includes('antigravity') && 
+                            !m.target.className?.includes('visual-thought')
+                        );
+                        
+                        if (significant && !changed) {{
+                            changed = true;
+                            observer.disconnect();
+                            resolve(true);
+                        }}
+                    }});
+                    
+                    observer.observe(document.body, {{ 
+                        childList: true, 
+                        subtree: true, 
+                        attributes: true, 
+                        characterData: true 
+                    }});
+                    
+                    setTimeout(() => {{
+                        observer.disconnect();
+                        resolve(false);
+                    }}, timeoutSec * 1000);
+                }});
+            }}
+        """, timeout)
 
     async def crawl(
         self,
@@ -104,7 +204,7 @@ class WebCrawler:
         self.start_domain = urlparse(start_url).netloc
         await self.visual.inject_visual_styles()
 
-        print(f"\n[Crawler] 🕷️  Starting crawl")
+        print(f"\n[Crawler] Starting crawl")
         print(f"[Crawler]    URL    : {start_url}")
         print(f"[Crawler]    Intent : {intent}")
         print(f"[Crawler]    Depth  : {max_depth}")
@@ -138,7 +238,7 @@ class WebCrawler:
         )
 
         if login_ok:
-            print(f"[Crawler] ✅ Login OK: {login_msg}")
+            print(f"[Crawler] Login OK: {login_msg}")
             await asyncio.sleep(3)
             # Check for post-login CAPTCHA
             captcha_info = await self.captcha_handler.detect_captcha(self.page)
@@ -148,7 +248,7 @@ class WebCrawler:
                 )
             return True
 
-        print(f"[Crawler] ❌ Login failed: {login_msg}")
+        print(f"[Crawler] Login failed: {login_msg}")
         return False
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -188,10 +288,10 @@ class WebCrawler:
                     )
                     await asyncio.sleep(random.uniform(1.5, 2.5))
                 except PlaywrightTimeoutError:
-                    print(f"[Crawler] ⏱️ Timeout navigating to {url}")
+                    print(f"[Crawler] Timeout navigating to {url}")
                     continue
                 except Exception as e:
-                    print(f"[Crawler] ⚠️ Navigation error for {url}: {e}")
+                    print(f"[Crawler] Navigation error for {url}: {e}")
                     continue
 
             await self.visual.show_thinking(
@@ -201,7 +301,7 @@ class WebCrawler:
             # ── CAPTCHA check ─────────────────────────────────────────────
             captcha_info = await self.captcha_handler.detect_captcha(self.page)
             if captcha_info.get("type") != "none":
-                print(f"[Crawler] 🔒 BFS: CAPTCHA at {url}")
+                print(f"[Crawler] [BFS] CAPTCHA at {url}")
                 resolved = await self.captcha_handler.handle_captcha(
                     self.page, self.chat_id or 0, self.request_id
                 )
@@ -210,7 +310,7 @@ class WebCrawler:
 
             # ── Login check ───────────────────────────────────────────────
             if await self.nav_agent._is_login_page():
-                print(f"[Crawler] 🔐 BFS: Login page at {url}")
+                print(f"[Crawler] [BFS] Login page at {url}")
                 login_ok = await self._handle_login_then_continue(url, intent)
                 if not login_ok:
                     continue
@@ -218,7 +318,7 @@ class WebCrawler:
             # ── Form check (success!) ─────────────────────────────────────
             if await self.nav_agent._has_form():
                 print(
-                    f"[Crawler] ✅ BFS found form at depth {depth}: {self.page.url}"
+                    f"[Crawler] [BFS] Found form at depth {depth}: {self.page.url}"
                 )
                 return (
                     True,
@@ -231,7 +331,7 @@ class WebCrawler:
             if depth < max_depth:
                 links = await self._extract_scored_links(intent)
                 print(
-                    f"[Crawler] 🔗 BFS depth {depth}: "
+                    f"[Crawler] [BFS] Depth {depth}: "
                     f"{len(links)} scored links queued from {url}"
                 )
                 for link_url, _score in links[:8]:

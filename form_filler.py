@@ -60,7 +60,7 @@ async def autofill_form(page, classified_fields, user_data):
                     await visual.show_filling_field(category, str(value))
                     await element.click()
                     filled_count += 1
-                    print(f"✅ Selected Radio '{category}': {value}")
+                    print(f"[LOGIN] Typed '{category}': {value}")
                 continue
 
             # ── 2. SELECT DROPDOWNS ────────────────────────────────────────────
@@ -71,7 +71,7 @@ async def autofill_form(page, classified_fields, user_data):
                     await visual.show_filling_field(category, str(value))
                     await element.select_option(value=str(value).lower())
                     filled_count += 1
-                    print(f"✅ Selected Opt '{category}': {value}")
+                    print(f"[LOGIN] Selected Opt '{category}': {value}")
                 continue
 
             # ── 3. CHECKBOXES ──────────────────────────────────────────────────
@@ -83,7 +83,7 @@ async def autofill_form(page, classified_fields, user_data):
                         await visual.show_filling_field(category, "CHECKED")
                         await element.check()
                         filled_count += 1
-                        print(f"✅ Checked '{category}'")
+                        print(f"[LOGIN] Checked '{category}'")
                 continue
 
             # ── 4. TEXT / GENERAL INPUTS ───────────────────────────────────────
@@ -98,11 +98,11 @@ async def autofill_form(page, classified_fields, user_data):
                     await visual.show_filling_field(category, str(value))
                     await element.fill(str(value))
                     filled_count += 1
-                    print(f"✅ Typed '{category}': {value}")
+                    print(f"[LOGIN] Typed '{category}': {value}")
                     break
 
         except Exception as e:
-            print(f"⚠️ Error filling '{category}': {e}")
+            print(f"[LOGIN] Error filling '{category}': {e}")
 
     # ── 🚀 AUTO-SUBMIT ────────────────────────────────────────────────────────
     auto_submit_enabled = actual_user_data.get("auto_submit", False)
@@ -110,31 +110,37 @@ async def autofill_form(page, classified_fields, user_data):
     if not auto_submit_enabled:
         print("\n✋ Auto-Submit is DISABLED. Please verify the form and click Submit manually.")
         await visual.add_thought("✋ Auto-Submit is disabled. Please review and submit manually.")
-        print(f"\n🎉 Total fields filled: {filled_count}/{len(classified_fields)}")
+        print(f"\nTotal fields filled: {filled_count}/{len(classified_fields)}")
         return filled_count
 
-    print("\n🚀 Attempting Auto-Submit...")
+    print("\nAttempting Auto-Submit...")
     await asyncio.sleep(1)
     try:
         # Look for submit buttons
         submit_selectors = [
             "button[type='submit']",
             "input[type='submit']",
+            "input[type='button'][value*='Submit' i]",
+            "input[type='button'][value*='Register' i]",
+            "input[type='button'][value*='Apply' i]",
             "button:has-text('Submit')",
             "button:has-text('Register')",
             "button:has-text('Apply')",
-            ".btn:has-text('Submit')"
+            "button:has-text('Submit and Continue')",
+            "button:has-text('Next')",
+            ".btn:has-text('Submit')",
+            ".btn:has-text('Register')"
         ]
         
         for sel in submit_selectors:
             btn = page.locator(sel).first
             if await btn.count() > 0 and await btn.is_visible():
-                print(f"👉 Clicking submit button: {sel}")
+                print(f"Clicking submit button: {sel}")
                 await visual.add_thought("🚀 Form filled! Clicking Submit...")
                 await btn.click()
                 break
     except Exception as e:
-        print(f"⚠️ Submit failed: {e}")
+        print(f"Submit failed: {e}")
 
     print(f"\n🎉 Total fields filled: {filled_count}/{len(classified_fields)}")
     return filled_count
