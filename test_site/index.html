@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Exam Registration — Demo</title>
+    <style>
+        :root {
+            --bg: #f4f7fb;
+            --card: #ffffff;
+            --text: #13233a;
+            --muted: #50627a;
+            --primary: #1d4ed8;
+            --primary-strong: #1e40af;
+            --border: #dbe5f1;
+            --shadow: 0 14px 30px rgba(18, 39, 71, 0.08);
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+            background: radial-gradient(circle at top left, #eaf2ff 0%, var(--bg) 35%, var(--bg) 100%);
+            color: var(--text);
+            display: grid;
+            place-items: center;
+            padding: 20px;
+        }
+        main {
+            width: min(680px, 100%);
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 28px;
+            box-shadow: var(--shadow);
+        }
+        h1 { margin: 0 0 12px; font-size: 2rem; line-height: 1.2; }
+        p { margin: 0; line-height: 1.65; color: var(--muted); font-size: 1rem; }
+        nav { margin-top: 22px; display: grid; gap: 12px; }
+        a.cta {
+            text-decoration: none;
+            text-align: center;
+            background: linear-gradient(135deg, var(--primary), #2563eb);
+            color: #fff;
+            padding: 14px 18px;
+            border-radius: 10px;
+            font-weight: 700;
+            box-shadow: 0 8px 18px rgba(29, 78, 216, 0.24);
+            transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
+        }
+        a.cta:hover { transform: translateY(-1px); box-shadow: 0 12px 20px rgba(29, 78, 216, 0.28); background: linear-gradient(135deg, var(--primary-strong), var(--primary)); }
+        a.sub { text-align: center; color: var(--primary); font-weight: 600; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>Demo examination registration</h1>
+        <p>
+            This static site mimics a multi-step flow (landing → instructions → verification step → application form)
+            for testing the Telegram bot’s navigation, optional challenge pages, and auto-fill.
+        </p>
+        <nav>
+            <a class="cta" href="admissions.html">Continue to registration steps</a>
+            <a class="sub" href="about.html">About this demo</a>
+        </nav>
+    </main>
+</body>
+</html>
