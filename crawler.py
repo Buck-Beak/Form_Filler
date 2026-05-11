@@ -80,6 +80,7 @@ class WebCrawler:
             captcha_handler  = self.captcha_handler,
             chat_id          = chat_id,
             user_data        = user_data,
+            request_id       = self.request_id,
         )
 
         self.start_domain: str = ""

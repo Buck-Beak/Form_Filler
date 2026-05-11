@@ -26,35 +26,33 @@
                 radial-gradient(900px 500px at 110% 120%, #dbeafe 0%, transparent 65%),
                 var(--bg);
             color: var(--text);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 40px 18px;
+            padding: 24px 16px;
         }
         main {
-            width: min(760px, 100%);
+            width: min(640px, 100%);
+            margin: 20px auto;
             background: var(--card);
             border: 1px solid var(--border);
-            border-radius: 22px;
-            padding: 34px;
+            border-radius: 14px;
+            padding: 22px;
             box-shadow: var(--shadow);
         }
-        h1 { margin: 0 0 14px; font-size: clamp(1.7rem, 3.5vw, 2.2rem); letter-spacing: -0.02em; }
-        ol { margin: 0; padding-left: 24px; color: var(--muted); line-height: 1.9; font-size: 1.06rem; }
+        h1 { margin: 0 0 10px; font-size: clamp(1.35rem, 2.6vw, 1.75rem); letter-spacing: -0.01em; }
+        ol { margin: 0; padding-left: 22px; color: var(--muted); line-height: 1.65; font-size: 0.98rem; }
         a.cta {
             display: inline-block;
-            margin-top: 26px;
+            margin-top: 18px;
             text-decoration: none;
             background: linear-gradient(135deg, var(--success), #22c55e);
             color: #fff;
-            padding: 15px 24px;
-            border-radius: 12px;
+            padding: 11px 15px;
+            border-radius: 9px;
             font-weight: 700;
             box-shadow: 0 10px 22px rgba(22, 163, 74, 0.26);
             transition: transform .14s ease, box-shadow .14s ease, background .14s ease;
         }
         a.cta:hover { transform: translateY(-2px); box-shadow: 0 16px 28px rgba(22, 163, 74, 0.32); background: linear-gradient(135deg, var(--success-strong), var(--success)); }
-        a.back { display: inline-block; margin-top: 20px; color: var(--primary); text-decoration: none; font-weight: 700; }
+        a.back { display: inline-block; margin-top: 14px; color: var(--primary); text-decoration: none; font-weight: 700; }
     </style>
 </head>
 <body>

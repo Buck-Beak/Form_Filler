@@ -36,6 +36,7 @@ class NavigationAgent:
         captcha_handler=None,
         chat_id: Optional[int] = None,
         user_data: Optional[Dict] = None,
+        request_id: Optional[str] = None,
     ):
         self.page = playwright_page
         self.model = gemini_model
@@ -49,6 +50,7 @@ class NavigationAgent:
         self.captcha_handler = captcha_handler
         self.chat_id         = chat_id
         self.user_data       = user_data or {}
+        self.request_id      = request_id or ""
         
         #  State for Unified Flow 
         self.nav_stack = []        # List of (url, elements_tried) for backtracking
@@ -372,22 +374,41 @@ class NavigationAgent:
             return False
 
     async def _handle_captcha_loop(self):
-        """Watcher loop: Notify user and poll every 5s until CAPTCHA is gone."""
-        await self.visual.add_thought("CAPTCHA detected. Please solve it in the browser.")
+        """
+        Run full CAPTCHA pipeline (test-key / checkbox / 2captcha / Telegram),
+        then poll until the widget is gone if anything still blocks.
+        """
+        await self.visual.add_thought("CAPTCHA detected. Attempting automatic solve…")
         if self.bot and self.chat_id:
             try:
                 await self.bot.send_message(
                     chat_id=self.chat_id,
-                    text="CAPTCHA detected!\nPlease solve it in the browser window. I will resume automatically once it's cleared."
+                    text=(
+                        "CAPTCHA detected — trying automatic solve first.\n"
+                        "If the browser pauses, complete the challenge in the window."
+                    ),
                 )
-            except: pass
-        
-        while True:
-            cap = await self.captcha_handler.detect_captcha(self.page)
-            if cap.get("type") == "none":
-                await self.visual.add_thought("CAPTCHA solved! Resuming...")
-                break
-            await asyncio.sleep(5)
+            except Exception:
+                pass
+
+        if self.captcha_handler:
+            rid = self.request_id or "nav"
+            resolved = await self.captcha_handler.handle_captcha(
+                self.page, int(self.chat_id or 0), rid
+            )
+            if resolved:
+                await self.visual.add_thought("CAPTCHA step handled. Resuming navigation…")
+                return
+
+            await self.visual.add_thought(
+                "Automatic CAPTCHA solve did not finish — waiting for manual clear…"
+            )
+            while True:
+                cap = await self.captcha_handler.detect_captcha(self.page)
+                if cap.get("type") == "none":
+                    await self.visual.add_thought("CAPTCHA cleared. Resuming…")
+                    break
+                await asyncio.sleep(5)
 
     async def _handle_login_reactive(self) -> bool:
         """Reactive login: attempt auto-fill, if error detected, return False for handoff."""

@@ -139,7 +139,7 @@
     "success": true,
     "form_found": true,
     "form_filled": true,
-    "fields_filled_count": 9,
+    "fields_filled_count": 0,
     "steps_taken": [
       {
         "url": "http://localhost:8000/form.html",
@@ -152,5 +152,47 @@
     "error": null,
     "timestamp": "2026-03-11T09:50:44.734674",
     "session_id": "Local Test Website_1773202844"
+  },
+  {
+    "start_url": "http://127.0.0.1:8000/",
+    "user_intent": "Local Test Website",
+    "final_url": "http://127.0.0.1:8000/form.html",
+    "success": true,
+    "form_found": true,
+    "form_filled": true,
+    "fields_filled_count": 7,
+    "steps_taken": [
+      {
+        "url": "http://127.0.0.1:8000/form.html",
+        "action": "form_filled",
+        "details": "Filled 7 fields",
+        "timestamp": "2026-05-03T14:18:02.207937"
+      }
+    ],
+    "duration_seconds": 18.031915,
+    "error": null,
+    "timestamp": "2026-05-03T14:18:02.207991",
+    "session_id": "Local Test Website_1777798082"
+  },
+  {
+    "start_url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/eVerifyReturn-bl",
+    "user_intent": "everify",
+    "final_url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/eVerifyReturn-bl",
+    "success": true,
+    "form_found": true,
+    "form_filled": true,
+    "fields_filled_count": 4,
+    "steps_taken": [
+      {
+        "url": "https://eportal.incometax.gov.in/iec/foservices/#/pre-login/eVerifyReturn-bl",
+        "action": "form_filled",
+        "details": "Filled 2 fields",
+        "timestamp": "2026-05-03T14:20:36.022659"
+      }
+    ],
+    "duration_seconds": 12.270667,
+    "error": null,
+    "timestamp": "2026-05-03T14:20:36.022703",
+    "session_id": "everify_1777798236"
   }
 ]

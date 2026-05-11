@@ -34,6 +34,10 @@ class CaptchaType:
     NONE         = "none"
 
 
+# Google's public reCAPTCHA v2 keys for automated / local testing (always pass server verify).
+GOOGLE_RECAPTCHA_V2_TEST_SITEKEY = "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CaptchaHandler
 # ─────────────────────────────────────────────────────────────────────────────
@@ -77,6 +81,10 @@ class CaptchaHandler:
                         '.g-recaptcha, [data-sitekey], iframe[src*="recaptcha"]'
                     );
                     if (recaptchaEl) {
+                        const resp = document.getElementById('g-recaptcha-response');
+                        if (resp && resp.value && resp.value.length > 20) {
+                            return { type: 'none', sitekey: '' };
+                        }
                         const sitekey = recaptchaEl.getAttribute('data-sitekey') || '';
                         const scriptV3 = document.querySelector(
                             'script[src*="recaptcha/api.js?render"]'
@@ -114,28 +122,36 @@ class CaptchaHandler:
                     }
 
                     // ── Generic image / text CAPTCHA ────────────────────────
+                    // Body text alone is unreliable (e.g. help copy mentioning "CAPTCHA").
+                    // Only flag when text hints AND something challenge-like exists in the DOM.
                     const bodyText = (document.body && document.body.innerText || '').toLowerCase();
+                    const hasChallengeDom = !!(
+                        document.querySelector('iframe[src*="recaptcha"]') ||
+                        document.querySelector('iframe[src*="hcaptcha"]') ||
+                        document.querySelector('.g-recaptcha, .h-captcha, .cf-turnstile') ||
+                        document.querySelector('[data-sitekey]') ||
+                        document.querySelector('input[name*="captcha" i], input[id*="captcha" i]') ||
+                        document.querySelector('img[alt*="captcha" i], img[src*="captcha" i]')
+                    );
                     const captchaMarkers = [
                         'verify you are human', "i'm not a robot",
-                        'i am not a robot', 'security check', 'prove you are human'
+                        'i am not a robot', 'prove you are human'
                     ];
-                    
-                    // Check for markers first
                     let hasMarker = captchaMarkers.some(m => bodyText.includes(m));
-                    
-                    // Specific check for 'captcha' keyword - ignore if it's just 'test captcha' or in a link
                     if (!hasMarker && bodyText.includes('captcha')) {
                         const isTestPage = bodyText.includes('testbed') || bodyText.includes('bot test');
                         const captchaElements = Array.from(document.querySelectorAll('a, button, h1, h2, h3'))
                             .filter(el => el.innerText.toLowerCase().includes('captcha'));
-                        
-                        // If 'captcha' only appears in links/headers on a test page, it's likely not a challenge
                         if (!(isTestPage && captchaElements.length > 0)) {
                             hasMarker = true;
                         }
                     }
+                    // "security check" is too common in UI copy; only count it with real challenge DOM
+                    if (!hasMarker && bodyText.includes('security check') && hasChallengeDom) {
+                        hasMarker = true;
+                    }
 
-                    if (hasMarker) {
+                    if (hasMarker && hasChallengeDom) {
                         return { type: 'image', sitekey: '' };
                     }
 
@@ -146,6 +162,68 @@ class CaptchaHandler:
         except Exception as e:
             print(f"[CAPTCHA] Detection error: {e}")
             return {"type": CaptchaType.NONE, "sitekey": ""}
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 1b. Local / no-API tricks (test site key, checkbox click)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    async def _try_recaptcha_v2_test_key_bypass(
+        self, page: Page, sitekey: str
+    ) -> bool:
+        """
+        For Google's official v2 *test* site key only: fire the page callback and
+        fill the response textarea so the demo 'Continue' link unlocks without 2captcha.
+        """
+        if (sitekey or "").strip() != GOOGLE_RECAPTCHA_V2_TEST_SITEKEY:
+            return False
+        try:
+            ok = await page.evaluate(
+                """
+                () => {
+                    const token = 'test-recaptcha-token-local-demo';
+                    const ta = document.getElementById('g-recaptcha-response');
+                    if (ta) { ta.value = token; ta.innerHTML = token; }
+                    if (typeof captchaDemoCallback === 'function') {
+                        captchaDemoCallback(token);
+                        return true;
+                    }
+                    try {
+                        Object.entries(___grecaptcha_cfg.clients).forEach(([, client]) => {
+                            if (client && client.R && client.R.callback)
+                                client.R.callback(token);
+                        });
+                    } catch (_) {}
+                    return !!(ta && ta.value);
+                }
+                """
+            )
+            if ok:
+                print("[CAPTCHA] ✅ reCAPTCHA test site key bypass (local demo)")
+            return bool(ok)
+        except Exception as e:
+            print(f"[CAPTCHA] Test-key bypass error: {e}")
+            return False
+
+    async def _try_recaptcha_v2_checkbox_click(self, page: Page) -> bool:
+        """Click the reCAPTCHA v2 checkbox iframe (works for many sites + Google test key)."""
+        try:
+            await asyncio.sleep(1.5)
+            frame = page.frame_locator('iframe[src*="recaptcha/api2/anchor"], iframe[title*="reCAPTCHA"]').first
+            await frame.locator(".recaptcha-checkbox-border, #recaptcha-anchor").first.click(
+                timeout=12000
+            )
+            for _ in range(20):
+                await asyncio.sleep(0.5)
+                token = await page.evaluate(
+                    """() => (document.getElementById('g-recaptcha-response') || {}).value || ''"""
+                )
+                if len(token) > 20:
+                    print("[CAPTCHA] ✅ reCAPTCHA v2 solved via checkbox interaction")
+                    return True
+            return False
+        except Exception as e:
+            print(f"[CAPTCHA] Checkbox click path: {e}")
+            return False
 
     # ─────────────────────────────────────────────────────────────────────────
     # 2. Auto-solve via 2captcha
@@ -332,7 +410,17 @@ class CaptchaHandler:
 
         print(f"[CAPTCHA] 🚨 Detected CAPTCHA: {captcha_type}")
 
-        # Try 2captcha auto-solve first
+        sitekey = captcha_info.get("sitekey", "") or ""
+
+        if captcha_type == CaptchaType.RECAPTCHA_V2:
+            if await self._try_recaptcha_v2_test_key_bypass(page, sitekey):
+                await asyncio.sleep(1.0)
+                return True
+            if await self._try_recaptcha_v2_checkbox_click(page):
+                await asyncio.sleep(1.0)
+                return True
+
+        # Try 2captcha auto-solve
         if self.api_key:
             solved = await self.auto_solve(page, captcha_info)
             if solved:

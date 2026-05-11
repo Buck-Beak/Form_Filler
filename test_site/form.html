@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Online application form — Demo</title>
+    <style>
+        :root {
+            --bg: #eef4ff;
+            --card: #ffffff;
+            --text: #0f1f39;
+            --muted: #4f6280;
+            --primary: #1d4ed8;
+            --primary-strong: #1e40af;
+            --border: #d3e1f4;
+            --border-strong: #c5d4e8;
+            --shadow: 0 22px 50px rgba(16, 36, 70, 0.16);
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+            background:
+                radial-gradient(900px 500px at -10% -20%, #dbeafe 0%, transparent 65%),
+                radial-gradient(900px 500px at 110% 120%, #dbeafe 0%, transparent 65%),
+                var(--bg);
+            color: var(--text);
+            display: block;
+            padding: 18px 12px 28px;
+        }
+        form {
+            width: min(560px, 100%);
+            margin: 0 auto;
+            padding: 20px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+        }
+        h1 { margin: 0 0 9px; font-size: clamp(1.28rem, 2.3vw, 1.55rem); line-height: 1.2; letter-spacing: -0.01em; }
+        .step-hint { margin: 0 0 12px; font-size: 0.9rem; color: var(--muted); }
+        label { display: block; margin-top: 11px; font-weight: 600; font-size: 0.88rem; color: #1f334f; }
+        input, select {
+            width: 100%;
+            padding: 9px 10px;
+            margin-top: 6px;
+            border: 1px solid var(--border-strong);
+            border-radius: 7px;
+            background: #fff;
+            font: inherit;
+            color: inherit;
+            outline: none;
+            transition: border-color .12s ease, box-shadow .12s ease;
+        }
+        input:focus, select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.15);
+        }
+        .check { display: flex; align-items: flex-start; gap: 9px; margin-top: 12px; }
+        .check input { width: auto; margin-top: 4px; }
+        .check label { margin-top: 0; font-weight: 500; color: #213653; }
+        .btn-primary {
+            margin-top: 14px;
+            padding: 10px 14px;
+            background: linear-gradient(135deg, var(--primary), #2563eb);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+            width: 100%;
+            box-shadow: 0 10px 22px rgba(29, 78, 216, 0.26);
+            transition: transform .14s ease, box-shadow .14s ease, background .14s ease;
+        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 16px 28px rgba(29, 78, 216, 0.32); background: linear-gradient(135deg, var(--primary-strong), var(--primary)); }
+        .btn-secondary {
+            margin-top: 9px;
+            padding: 9px 12px;
+            background: #f1f5f9;
+            color: #334155;
+            border: 1px solid var(--border-strong);
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+        }
+        .btn-secondary:hover { background: #e6edf7; }
+        a.back {
+            display: block;
+            margin: 10px auto 0;
+            width: min(560px, 100%);
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 700;
+        }
+        .step-hidden { display: none !important; }
+        .summary {
+            background: #f8fbff;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 0.86rem;
+            line-height: 1.45;
+            margin-top: 8px;
+        }
+        .summary dt { font-weight: 700; color: #304a68; margin-top: 8px; }
+        .summary dt:first-child { margin-top: 0; }
+        .summary dd { margin: 0; color: #1e293b; }
+    </style>
+</head>
+<body>
+    <form id="applicationForm" action="#" method="get">
+        <!-- Step 1: personal details -->
+        <div id="step1">
+            <h1>Application form (demo)</h1>
+            <p class="step-hint">Step <strong>1</strong> of 2 — Your details. When everything here is valid, the next step opens automatically (or use the button).</p>
+
+            <label for="name">Full name</label>
+            <input type="text" id="name" name="name" required autocomplete="name">
+
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" required autocomplete="email">
+
+            <label for="phone">Mobile / phone</label>
+            <input type="tel" id="phone" name="phone" required autocomplete="tel">
+
+            <label for="dob">Date of birth</label>
+            <input type="date" id="dob" name="dob" required>
+
+            <label for="gender">Gender</label>
+            <select id="gender" name="gender" required>
+                <option value="">Select</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+            </select>
+
+            <label for="occupation">Occupation</label>
+            <select id="occupation" name="occupation" required>
+                <option value="">Select</option>
+                <option value="student">Student</option>
+                <option value="employed">Employed</option>
+                <option value="self-employed">Self-employed</option>
+                <option value="other">Other</option>
+            </select>
+
+            <button type="button" class="btn-primary" id="btnContinueStep2">Continue to review &amp; submit</button>
+        </div>
+
+        <!-- Step 2: review, terms, submit -->
+        <div id="step2" class="step-hidden">
+            <h1>Application form (demo)</h1>
+            <p class="step-hint">Step <strong>2</strong> of 2 — Confirm and submit.</p>
+
+            <p style="font-size:0.95rem; font-weight:700; margin-bottom:0; color:#27415f;">Summary</p>
+            <dl class="summary" id="summaryBlock"></dl>
+
+            <div class="check">
+                <input type="checkbox" id="terms_agreement" name="terms_agreement" required>
+                <label for="terms_agreement">I agree to the terms and conditions</label>
+            </div>
+
+            <button type="submit" class="btn-primary">Submit application</button>
+            <button type="button" class="btn-secondary" id="btnBackStep1">← Edit details (step 1)</button>
+        </div>
+    </form>
+    <a class="back" id="backToCaptcha" href="captcha.html">← Back to security check</a>
+    <script>
+        (function () {
+            var form = document.getElementById('applicationForm');
+            var step1 = document.getElementById('step1');
+            var step2 = document.getElementById('step2');
+            var summaryBlock = document.getElementById('summaryBlock');
+            var backLink = document.getElementById('backToCaptcha');
+            var autoAdvanceTimer = null;
+
+            function step1Valid() {
+                var ids = ['name', 'email', 'phone', 'dob', 'gender', 'occupation'];
+                for (var i = 0; i < ids.length; i++) {
+                    var el = document.getElementById(ids[i]);
+                    if (!el || !el.checkValidity()) return false;
+                }
+                return true;
+            }
+
+            function buildSummary() {
+                var g = document.getElementById('gender');
+                var o = document.getElementById('occupation');
+                var gText = g.options[g.selectedIndex].text;
+                var oText = o.options[o.selectedIndex].text;
+                summaryBlock.innerHTML =
+                    '<dt>Full name</dt><dd>' + escapeHtml(document.getElementById('name').value) + '</dd>' +
+                    '<dt>Email</dt><dd>' + escapeHtml(document.getElementById('email').value) + '</dd>' +
+                    '<dt>Mobile / phone</dt><dd>' + escapeHtml(document.getElementById('phone').value) + '</dd>' +
+                    '<dt>Date of birth</dt><dd>' + escapeHtml(document.getElementById('dob').value) + '</dd>' +
+                    '<dt>Gender</dt><dd>' + escapeHtml(gText) + '</dd>' +
+                    '<dt>Occupation</dt><dd>' + escapeHtml(oText) + '</dd>';
+            }
+
+            function escapeHtml(s) {
+                var d = document.createElement('div');
+                d.textContent = s;
+                return d.innerHTML;
+            }
+
+            function goToStep2() {
+                if (!step1Valid()) return;
+                buildSummary();
+                step1.classList.add('step-hidden');
+                step2.classList.remove('step-hidden');
+                if (backLink) backLink.classList.add('step-hidden');
+            }
+
+            function goToStep1() {
+                step2.classList.add('step-hidden');
+                step1.classList.remove('step-hidden');
+                if (backLink) backLink.classList.remove('step-hidden');
+            }
+
+            function scheduleAutoAdvance() {
+                if (autoAdvanceTimer) clearTimeout(autoAdvanceTimer);
+                autoAdvanceTimer = setTimeout(function () {
+                    if (step1.classList.contains('step-hidden')) return;
+                    if (step1Valid()) goToStep2();
+                }, 500);
+            }
+
+            ['name', 'email', 'phone', 'dob', 'gender', 'occupation'].forEach(function (id) {
+                var el = document.getElementById(id);
+                if (!el) return;
+                el.addEventListener('input', scheduleAutoAdvance);
+                el.addEventListener('change', scheduleAutoAdvance);
+            });
+
+            document.getElementById('btnContinueStep2').addEventListener('click', function () {
+                if (step1Valid()) goToStep2();
+                else form.reportValidity();
+            });
+
+            document.getElementById('btnBackStep1').addEventListener('click', goToStep1);
+
+            form.addEventListener('submit', function (e) {
+                if (!step2.classList.contains('step-hidden')) {
+                    e.preventDefault();
+                    alert('Demo: form would be submitted. Values are filled by the automation for review.');
+                    return;
+                }
+                e.preventDefault();
+            });
+        })();
+    </script>
+</body>
+</html>

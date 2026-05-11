@@ -2,6 +2,7 @@ import json
 import time
 import asyncio
 import os
+from typing import Optional
 import tempfile
 import requests
 import aiohttp  # async HTTP client
@@ -9,7 +10,7 @@ from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, CallbackQueryHandler, ContextTypes, filters
 import google.generativeai as genai
-from config import GEMINI_API_KEY, TELEGRAM_TOKEN
+from config import GEMINI_API_KEY, TELEGRAM_TOKEN, STANDALONE_APP_BASE
 from browser_utils import launch_browser
 from form_extractor import extract_form_fields
 from field_classifier import classify_fields_with_gemini
@@ -21,13 +22,14 @@ from captcha_handler import CaptchaHandler
 from login_handler import LoginHandler
 from dynamic_url_extractor import find_best_url
 
-# ── Load forms DB and users DB ──
+# ── Load forms DB (user profiles come only from the standalone Electron app) ──
 with open("forms.json", "r") as f:
     forms = json.load(f)
-with open("users.json", "r") as f:
-    users_db = json.load(f)
 with open("official_forms_urls.json", "r") as f:
     official_urls = json.load(f)
+
+# Empty: login_handler portal_credentials lookup is unused; credentials live in standalone profile fields.
+users_db: list = []
 
 pending_requests = {}
 active_crawlers = {}  # telegram_id -> WebCrawler instance
@@ -52,31 +54,98 @@ document_processor = DocumentProcessor(gemini_model)
 captcha_handler = CaptchaHandler()
 login_handler   = LoginHandler(users_db=users_db)
 
-def save_users_db():
-    """Safely save users database to file"""
-    try:
-        with open("users.json", "w") as f:
-            json.dump(users_db, f, indent=4)
-        return True
-    except Exception as e:
-        print(f"Error saving users database: {e}")
-        return False
-
-def load_users_db():
-    """Safely load users database from file"""
-    try:
-        with open("users.json", "r") as f:
-            return json.load(f)
-    except Exception as e:
-        print(f"Error loading users database: {e}")
-        return []
-
 def get_form_url(prompt: str):
     prompt = prompt.lower()
     for key, info in forms.items():
         if key.lower() in prompt:
             return info["url"], key
     return None, None
+
+
+def normalize_standalone_user_response(body):
+    """
+    Standalone Electron app returns GET /user-details/:id as {"user": {...}}.
+    Normalize to {"extracted_fields": {...}} for autofill (standalone app only).
+    Nested user.extracted_fields overrides same-named keys from the user root.
+    """
+    if not body or not isinstance(body, dict):
+        return None
+    user_obj = body.get("user")
+    if not isinstance(user_obj, dict):
+        return None
+    skip = frozenset(
+        {
+            "extracted_fields",
+            "fields_count",
+            "password",
+            "telegram_id",
+            "file_name",
+        }
+    )
+    flat = {}
+    for key, val in user_obj.items():
+        if key in skip or val is None or val == "":
+            continue
+        flat[key] = val
+    nested = user_obj.get("extracted_fields")
+    if not isinstance(nested, dict):
+        nested = {}
+    merged = {**flat, **nested}
+    return {"extracted_fields": merged}
+
+
+async def fetch_standalone_user_bundle(telegram_id) -> Optional[dict]:
+    """GET /user-details/:id from the Electron app; return normalized bundle or None."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{STANDALONE_APP_BASE}/user-details/{telegram_id}",
+                timeout=aiohttp.ClientTimeout(total=8),
+            ) as resp:
+                if resp.status != 200:
+                    return None
+                raw = await resp.json()
+                return normalize_standalone_user_response(raw)
+    except Exception as e:
+        print(f"⚠️ Standalone app request failed: {e}")
+        return None
+
+
+async def send_form_fill_history_to_standalone(
+    telegram_id,
+    form_name: str,
+    form_url: str,
+    filled_fields: int,
+) -> None:
+    """
+    POST /form-fill on the Electron app (proxies to MongoDB /api/form-fill).
+    Schema must match standalone_app backend formFillController.createFormFill.
+    """
+    payload = {
+        "telegram_id": str(telegram_id),
+        "form_name": form_name,
+        "filled_fields": int(filled_fields),
+        "timestamp": int(time.time()),
+        "datetime": datetime.now().isoformat(),
+        "form_url": form_url or "",
+    }
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{STANDALONE_APP_BASE}/form-fill",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                body = (await resp.text())[:500]
+                if resp.status in (200, 201):
+                    print(f"[Standalone] Form fill history saved ({resp.status}): {body}")
+                else:
+                    print(
+                        f"[Standalone] Form fill history failed HTTP {resp.status}: {body}"
+                    )
+    except Exception as e:
+        print(f"[Standalone] Form fill history error: {e}")
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_message = (
@@ -114,41 +183,34 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(help_message)
 
 async def myid_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show user's Telegram ID and registration status"""
+    """Show user's Telegram ID and standalone app profile status"""
     telegram_id = update.message.from_user.id
     username = update.message.from_user.username or "N/A"
     first_name = update.message.from_user.first_name or ""
-    
-    user_data = next((u for u in users_db if u["telegram_id"] == telegram_id), None)
-    
-    if user_data:
+
+    bundle = await fetch_standalone_user_bundle(telegram_id)
+    fields = (bundle or {}).get("extracted_fields") or {}
+
+    if bundle is not None:
         status_msg = (
-            f"✅ **You are registered!**\n\n"
-            f"👤 Name: {user_data.get('name', 'N/A')}\n"
+            f"✅ **Profile found in standalone app**\n\n"
             f"🆔 Telegram ID: `{telegram_id}`\n"
-            f"📧 Email: {user_data.get('email', 'N/A')}\n"
-            f"📱 Mobile: {user_data.get('mobile', 'N/A')}"
+            f"👤 Name: {fields.get('name', 'N/A')}\n"
+            f"📧 Email: {fields.get('email', 'N/A')}\n"
+            f"📱 Mobile: {fields.get('mobile', 'N/A')}\n"
+            f"📊 Fields stored: {len(fields)}"
         )
     else:
         status_msg = (
-            f"❌ **You are NOT registered yet!**\n\n"
+            f"❌ **No profile in standalone app**\n\n"
             f"🆔 Your Telegram ID: `{telegram_id}`\n"
-            f"👤 Telegram Name: {first_name}\n"
-            f"🔤 Username: @{username}\n\n"
-            f"📝 To register:\n"
-            f"1. Upload a document with your details OR\n"
-            f"2. Ask admin to add this ID to users.json:\n\n"
-            f"```json\n"
-            f'{{\n'
-            f'  "telegram_id": {telegram_id},\n'
-            f'  "name": "{first_name}",\n'
-            f'  "email": "your@email.com",\n'
-            f'  "mobile": "1234567890",\n'
-            f'  "dob": "2000-01-01"\n'
-            f'}}\n'
-            f"```"
+            f"👤 Telegram: {first_name} (@{username})\n\n"
+            f"📝 Do this:\n"
+            f"1. Open the **Electron desktop app** (API on port 5000).\n"
+            f"2. Register there and/or **upload a document** in Telegram so data syncs to the app.\n"
+            f"3. Run `/myid` again."
         )
-    
+
     await update.message.reply_text(status_msg)
 
 async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -235,7 +297,9 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "fields_count": extracted_count
             }
 
-            send_res = requests.post("http://localhost:5000/user-details", json=payload).json()
+            send_res = requests.post(
+                f"{STANDALONE_APP_BASE}/user-details", json=payload, timeout=15
+            ).json()
 
             await status_msg.edit_text(
                 f"✅ Document processed!\n\n"
@@ -297,7 +361,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Intercept 'test' command ──────────────────────────────────────────
     if user_text.lower().strip() == "test":
-        url = "http://localhost:8000"
+        # Use / so the URL path does not contain "index" (dashboard heuristic in NavigationAgent)
+        url = "http://127.0.0.1:8000/"
         form_key = "Local Test Website"
     else:
         url, form_key = get_form_url(user_text)
@@ -321,18 +386,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Reason: {reason}"
         )
     
-    user_data = next((u for u in users_db if u["telegram_id"] == telegram_id), None)
-    if not user_data:
-        await update.message.reply_text("❌ Your user data is not in the database.\nUse /myid to register.")
+    profile = await fetch_standalone_user_bundle(telegram_id)
+    if profile is None:
+        await update.message.reply_text(
+            "❌ **Standalone app has no profile for you.**\n\n"
+            "• Start the **Electron app** (listening on port 5000).\n"
+            "• Add your data there or **upload a document** in this chat first.\n"
+            "• Then try again. Use /myid to check."
+        )
         return
-    
+
     request_id = f"{telegram_id}_{int(time.time())}"
     pending_requests[request_id] = {
         "url": url,
         "form_key": form_key,
-        "user_data": user_data,
         "chat_id": chat_id,
-        "telegram_id": telegram_id
+        "telegram_id": telegram_id,
     }
     keyboard = [
         [InlineKeyboardButton("🚀 Open & Auto-Fill Form", callback_data=f"fill_{request_id}")]
@@ -373,39 +442,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = request["url"]
     form_key = request["form_key"]
 
-    # Always load base data from users.json for preferences
-    base_user_data = next((u for u in users_db if u["telegram_id"] == request["telegram_id"]), {})
-    
-    # Try to fetch data from standalone app (extracted fields)
-    extracted_data = None
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(f"http://localhost:5000/user/{request['telegram_id']}", timeout=aiohttp.ClientTimeout(total=3)) as resp:
-                if resp.status == 200:
-                    extracted_data = await resp.json()
-                    print("\n📥 RECEIVED FROM ELECTRON APP:", extracted_data)
-    except Exception as e:
-        print(f"⚠️ Standalone app not reachable: {e}")
-        print("📂 Using only users.json")
-    
-    # Merge preferences with extracted fields
-    # If server has "extracted_fields", use them. Otherwise use base_user_data.
-    if extracted_data and "extracted_fields" in extracted_data:
-        # Create a copy of base preferences
-        final_fields = base_user_data.copy()
-        # Update with extracted fields from server
-        final_fields.update(extracted_data["extracted_fields"])
-        user_data = {"extracted_fields": final_fields}
-    else:
-        # Fallback: wrap base_user_data
-        user_data = {"extracted_fields": base_user_data}
+    extracted_data = await fetch_standalone_user_bundle(request["telegram_id"])
+    print("\n📥 STANDALONE APP (normalized):", extracted_data)
 
-    if not base_user_data and not extracted_data:
+    if not extracted_data or "extracted_fields" not in extracted_data:
         await context.bot.send_message(
             chat_id=request["chat_id"],
-            text="❌ Your user data is not in the database. Use /myid to check your registration status."
+            text=(
+                "❌ **Could not load your profile from the standalone app.**\n\n"
+                "Make sure the Electron app is running and try again (/myid)."
+            ),
         )
         return
+
+    user_data = {"extracted_fields": dict(extracted_data["extracted_fields"])}
 
     form_key = request["form_key"]
     await query.edit_message_text(
@@ -434,11 +484,26 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         active_crawlers[telegram_id] = crawler
         agent = crawler.nav_agent  # keep reference for session helpers below
 
-        # Use the crawler to reach the actual form page
+        # Intent for navigation scoring / AI: form_key is often a label (e.g. "Local Test Website")
+        nav_intent = (
+            "register apply online examination JEE application admission form"
+            if form_key == "Local Test Website"
+            else form_key
+        )
+        if form_key == "Local Test Website":
+            await context.bot.send_message(
+                chat_id=request["chat_id"],
+                text=(
+                    "🧪 Local test lab\n\n"
+                    "Serve the site from the project folder, then use the button:\n"
+                    "`python test_site/serve.py`\n\n"
+                    "The bot will crawl from the home page to the application form and auto-fill."
+                ),
+            )
         try:
-            print(f"\n[Bot] Starting WebCrawler for: {form_key}")
+            print(f"\n[Bot] Starting WebCrawler for: {form_key} (nav_intent={nav_intent!r})")
             found, final_url, reason = await crawler.crawl(
-                url, form_key, max_depth=8
+                url, nav_intent, max_depth=8
             )
         except NavigationBlockedError as nav_err:
             await context.bot.send_message(
@@ -704,7 +769,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 last_session['form_filled'] = True
                 last_session['fields_filled_count'] = filled_count
                 agent.session_storage._save_sessions()
-        
+
+        await send_form_fill_history_to_standalone(
+            request["telegram_id"],
+            form_key,
+            final_url,
+            filled_count,
+        )
+
         await context.bot.send_message(
             chat_id=request["chat_id"],
             text=f"✅ Form Auto-Filled Successfully!\n"
